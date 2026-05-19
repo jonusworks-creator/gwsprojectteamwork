@@ -826,53 +826,7 @@ updateAccessUI = function(){
 const __oldBindActionButtonsContent = bindActionButtons;
 bindActionButtons = function(){__oldBindActionButtonsContent();const btn=document.getElementById('content-add-button');if(btn){btn.type='button';btn.onclick=(e)=>{e.preventDefault();openContentModal();return false;};}};
 window.renderContentSchedule=renderContentSchedule;window.openContentModal=openContentModal;window.closeContentModal=closeContentModal;window.saveContentRecord=saveContentRecord;window.deleteContentRecord=deleteContentRecord;window.clearContentFilters=clearContentFilters;window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=updateAccessUI;
-
-/* ===== Content Schedule visibility hardening ===== */
-const __contentScheduleVisibilityAllowed = () => ['owner','manager','graphic','content'].includes(accessRole);
-function hardEnsureContentScheduleVisible(){
-  ensureContentScheduleUI();
-  const nav=document.querySelector('.nav-item[data-view="content-schedule"]');
-  if(nav){
-    nav.style.display=__contentScheduleVisibilityAllowed()?'flex':'none';
-    nav.style.opacity='1';
-    nav.title=__contentScheduleVisibilityAllowed()?'':'Content Schedule ดูได้เฉพาะ Owner / Manager / Graphic / Content';
-  }
-  const sec=document.getElementById('view-content-schedule');
-  if(sec && !__contentScheduleVisibilityAllowed() && currentView==='content-schedule'){
-    showView(hasManagerAccess()?'dashboard':'tasks');
-  }
-}
-const __origUpdateAccessUIForContentVisible = updateAccessUI;
-updateAccessUI = function(){
-  __origUpdateAccessUIForContentVisible();
-  hardEnsureContentScheduleVisible();
-};
-const __origRenderAllForContentVisible = renderAll;
-renderAll = function(){
-  __origRenderAllForContentVisible();
-  safeRun('content-schedule-visible', hardEnsureContentScheduleVisible);
-  if(__contentScheduleVisibilityAllowed()) safeRun('content-schedule-render', renderContentSchedule);
-};
-const __origShowViewForContentVisible = showView;
-showView = function(v){
-  if(v==='content-schedule'&&!__contentScheduleVisibilityAllowed()){
-    toast('Content Schedule ดูได้เฉพาะ Owner / Manager / Graphic / Content');
-    return;
-  }
-  __origShowViewForContentVisible(v);
-  if(v==='content-schedule'){
-    const titleEl=document.getElementById('view-title');
-    if(titleEl) titleEl.innerHTML='Content <span>Schedule</span>';
-    renderContentSchedule();
-  }
-};
-window.showView=showView;
-window.renderAll=renderAll;
-window.updateAccessUI=updateAccessUI;
-/* ===== End Content Schedule visibility hardening ===== */
-
 ensureContentScheduleUI();
-hardEnsureContentScheduleVisible();
 /* ================= End Content Schedule Patch ================= */
 
 init();
