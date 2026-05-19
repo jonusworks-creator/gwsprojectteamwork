@@ -101,8 +101,8 @@ button,input,select,textarea{font-family:var(--font)}
 .master-note{padding:10px 12px;border-radius:12px;background:#f8fafc;border:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.5}
 
 /* Sticky horizontal scrollbar for wide tables */
-.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#94a3b8 #eef2f7;}
-.finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar{height:12px}.finance-table-wrap::-webkit-scrollbar-track,.tracking-table-wrap::-webkit-scrollbar-track,.crm-table-wrap::-webkit-scrollbar-track{background:#eef2f7}.finance-table-wrap::-webkit-scrollbar-thumb,.tracking-table-wrap::-webkit-scrollbar-thumb,.crm-table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}
+.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap,.content-table-wrap{scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#94a3b8 #eef2f7;}
+.finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar,.content-table-wrap::-webkit-scrollbar{height:12px}.finance-table-wrap::-webkit-scrollbar-track,.tracking-table-wrap::-webkit-scrollbar-track,.crm-table-wrap::-webkit-scrollbar-track,.content-table-wrap::-webkit-scrollbar-track{background:#eef2f7}.finance-table-wrap::-webkit-scrollbar-thumb,.tracking-table-wrap::-webkit-scrollbar-thumb,.crm-table-wrap::-webkit-scrollbar-thumb,.content-table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}
 .sticky-h-scroll{position:fixed;left:281px;right:26px;bottom:14px;height:22px;overflow-x:auto;overflow-y:hidden;z-index:1200;background:rgba(255,255,255,.96);border:1px solid var(--line2);border-radius:999px;box-shadow:0 12px 32px rgba(15,23,42,.16);padding:3px 8px;display:none;-webkit-overflow-scrolling:touch;backdrop-filter:blur(12px)}
 .sticky-h-scroll-inner{height:1px;}
 .sticky-h-scroll::-webkit-scrollbar{height:12px}.sticky-h-scroll::-webkit-scrollbar-track{background:#eef2f7;border-radius:999px}.sticky-h-scroll::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}.sticky-h-scroll::-webkit-scrollbar-thumb:hover{background:#64748b}
@@ -110,8 +110,8 @@ button,input,select,textarea{font-family:var(--font)}
 @media(max-width:900px){.sticky-h-scroll{left:12px;right:12px;bottom:10px;height:26px}.sticky-h-scroll::-webkit-scrollbar{height:14px}}
 /* Hide native small horizontal scrollbars inside table boxes. The floating sticky scrollbar remains the only visible horizontal control. */
 .finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{overflow-x:hidden!important;}
-.finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar{display:none!important;width:0!important;height:0!important;}
-.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{scrollbar-width:none!important;-ms-overflow-style:none!important;}
+.finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar,.content-table-wrap::-webkit-scrollbar{display:none!important;width:0!important;height:0!important;}
+.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap,.content-table-wrap{scrollbar-width:none!important;-ms-overflow-style:none!important;}
 
 
 </style>

@@ -829,4 +829,75 @@ window.renderContentSchedule=renderContentSchedule;window.openContentModal=openC
 ensureContentScheduleUI();
 /* ================= End Content Schedule Patch ================= */
 
+
+/* ================= Sticky horizontal scrollbar patch ================= */
+let stickyScrollSyncing=false;
+const WIDE_SCROLL_SELECTORS='.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap,.content-table-wrap';
+function getActiveWideTableWrap(){
+  const view=document.querySelector('.view.active');
+  if(!view)return null;
+  return view.querySelector(WIDE_SCROLL_SELECTORS);
+}
+function ensureStickyHorizontalScroll(){
+  let bar=document.getElementById('sticky-h-scroll');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='sticky-h-scroll';
+    bar.className='sticky-h-scroll';
+    bar.innerHTML='<div class="sticky-h-scroll-inner"></div>';
+    document.body.appendChild(bar);
+    bar.addEventListener('scroll',()=>{
+      if(stickyScrollSyncing)return;
+      const wrap=getActiveWideTableWrap();
+      if(!wrap)return;
+      stickyScrollSyncing=true;
+      wrap.scrollLeft=bar.scrollLeft;
+      stickyScrollSyncing=false;
+    },{passive:true});
+  }
+  return bar;
+}
+function setupWideTableScrollbars(){
+  document.querySelectorAll('.table-scroll-top').forEach(el=>el.remove());
+  document.querySelectorAll(WIDE_SCROLL_SELECTORS).forEach(w=>{
+    if(!w.nextElementSibling||!w.nextElementSibling.classList?.contains('sticky-scroll-spacer')){
+      const sp=document.createElement('div');
+      sp.className='sticky-scroll-spacer';
+      w.insertAdjacentElement('afterend',sp);
+    }
+  });
+  const bar=ensureStickyHorizontalScroll();
+  const inner=bar.querySelector('.sticky-h-scroll-inner');
+  const wrap=getActiveWideTableWrap();
+  document.body.classList.remove('has-sticky-scroll');
+  if(!wrap || wrap.scrollWidth<=wrap.clientWidth+4){bar.style.display='none';return;}
+  inner.style.width=wrap.scrollWidth+'px';
+  if(!wrap.dataset.stickyScrollBound){
+    wrap.dataset.stickyScrollBound='1';
+    wrap.addEventListener('scroll',()=>{
+      if(stickyScrollSyncing)return;
+      const active=getActiveWideTableWrap();
+      if(active!==wrap)return;
+      const b=ensureStickyHorizontalScroll();
+      stickyScrollSyncing=true;
+      b.scrollLeft=wrap.scrollLeft;
+      stickyScrollSyncing=false;
+    },{passive:true});
+  }
+  stickyScrollSyncing=true;
+  bar.scrollLeft=wrap.scrollLeft;
+  stickyScrollSyncing=false;
+  bar.style.display='block';
+  document.body.classList.add('has-sticky-scroll');
+}
+function refreshWideTableScrollbars(){setTimeout(setupWideTableScrollbars,80);setTimeout(setupWideTableScrollbars,350);setTimeout(setupWideTableScrollbars,900);}
+window.addEventListener('resize',refreshWideTableScrollbars);
+window.addEventListener('scroll',refreshWideTableScrollbars,{passive:true});
+const __oldShowViewSticky = showView;
+showView = function(v){__oldShowViewSticky(v);refreshWideTableScrollbars();};
+const __oldRenderAllSticky = renderAll;
+renderAll = function(){__oldRenderAllSticky();safeRun('sticky-scrollbar',refreshWideTableScrollbars);};
+window.showView=showView;window.renderAll=renderAll;window.refreshWideTableScrollbars=refreshWideTableScrollbars;
+/* ================= End sticky horizontal scrollbar patch ================= */
+
 init();
