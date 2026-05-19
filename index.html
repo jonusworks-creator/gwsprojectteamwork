@@ -99,6 +99,15 @@ button,input,select,textarea{font-family:var(--font)}
 .channel-dot.partial{background:var(--warning-bg);color:var(--warning)}
 .channel-dot.off{background:#eef2f6;color:#98a2b3}
 .master-note{padding:10px 12px;border-radius:12px;background:#f8fafc;border:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.5}
+
+/* Easy horizontal scrolling for wide tables */
+.table-scroll-top{overflow-x:auto;overflow-y:hidden;height:18px;margin:0 0 8px 0;border:1px solid var(--line);border-radius:999px;background:#f8fafc;-webkit-overflow-scrolling:touch;}
+.table-scroll-top-inner{height:1px;}
+.table-scroll-top::-webkit-scrollbar{height:10px}.table-scroll-top::-webkit-scrollbar-track{background:#eef2f7;border-radius:999px}.table-scroll-top::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}.table-scroll-top::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#94a3b8 #eef2f7;}
+.finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar{height:12px}.finance-table-wrap::-webkit-scrollbar-track,.tracking-table-wrap::-webkit-scrollbar-track,.crm-table-wrap::-webkit-scrollbar-track{background:#eef2f7}.finance-table-wrap::-webkit-scrollbar-thumb,.tracking-table-wrap::-webkit-scrollbar-thumb,.crm-table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}
+@media(max-width:900px){.table-scroll-top{height:22px}.table-scroll-top::-webkit-scrollbar{height:12px}}
+
 </style>
 </head>
 <body>
@@ -387,6 +396,7 @@ function renderAll(){
   safeRun('financial',renderFinancial);
   safeRun('tracking',renderTracking);
   safeRun('access',updateAccessUI);
+  safeRun('wide-scroll',refreshWideTableScrollbars);
 }
 function showView(v){
   if((v==='dashboard'||v==='financial')&&!hasManagerAccess()){
@@ -398,6 +408,7 @@ function showView(v){
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
   const titles={dashboard:'Dashboard <span>Overview</span>',financial:'Financial <span>Payments</span>',tasks:'All <span>Tasks</span>',brands:'Client <span>Brands</span>','brand-info':'Brand <span>Information</span>',tracking:'Project <span>Tracking</span>',team:'The <span>Team</span>'};
   const titleEl=document.getElementById('view-title'); if(titleEl)titleEl.innerHTML=titles[v]||'';
+  refreshWideTableScrollbars();
 }
 function renderStats(){const total=tasks.length,done=tasks.filter(t=>t.status==='done').length,inp=tasks.filter(t=>t.status==='inprogress').length,review=tasks.filter(t=>t.status==='review').length,over=tasks.filter(t=>t.deadline&&t.deadline<today()&&t.status!=='done').length,high=tasks.filter(t=>t.priority==='high'&&t.status!=='done').length;document.getElementById('stats-bar').innerHTML=stat(total,'งานทั้งหมด')+stat(inp,'กำลังทำ')+stat(review,'รอตรวจ')+stat(done,'เสร็จแล้ว','success')+stat(over,'เกินกำหนด','danger')+stat(high,'ด่วนมาก','danger');}
 function stat(n,l,cls=''){return `<div class="stat-card ${cls}"><div class="stat-num">${n}</div><div class="stat-label">${l}</div></div>`;}
@@ -406,6 +417,33 @@ function clearFilters(event){if(event?.preventDefault)event.preventDefault();['s
 function filteredTasks(){const q=(document.getElementById('search-input')?.value||'').toLowerCase().trim();const fs=document.getElementById('filter-status')?.value||'';const fb=document.getElementById('filter-brand')?.value||'';const fa=document.getElementById('filter-assignee')?.value||'';const fp=document.getElementById('filter-priority')?.value||'';const ft=document.getElementById('filter-type')?.value||'';const from=document.getElementById('filter-from')?.value||'';const to=document.getElementById('filter-to')?.value||'';return tasks.filter(t=>{const hay=[t.name,t.brand,t.assigner?.name,t.assignee?.name,t.type,t.note,SL[t.status],PL[t.priority]].join(' ').toLowerCase();return (!q||hay.includes(q))&&(!fs||t.status===fs)&&(!fb||t.brand===fb)&&(!fa||t.assignee?.name===fa)&&(!fp||t.priority===fp)&&(!ft||t.type===ft)&&(!from||t.deadline>=from)&&(!to||t.deadline<=to);});}
 function renderTasks(){const el=document.getElementById('task-list');if(!el)return;const list=filteredTasks().sort(sortTasks);el.innerHTML=list.length?list.map(taskRow).join(''):'<div class="no-tasks"><i class="ti ti-inbox" style="font-size:34px;display:block;margin-bottom:8px"></i>ไม่พบงาน</div>';}
 function sortTasks(a,b){const pr={high:0,medium:1,normal:2,low:3};return (a.status==='done')-(b.status==='done') || (pr[a.priority]??2)-(pr[b.priority]??2) || String(a.deadline||'9999').localeCompare(String(b.deadline||'9999'));}
+
+
+function setupWideTableScrollbars(){
+  const selectors=['.finance-table-wrap','.tracking-table-wrap','.crm-table-wrap'];
+  selectors.forEach(sel=>{
+    const wrap=document.querySelector(sel);
+    if(!wrap||!wrap.parentNode)return;
+    let top=wrap.previousElementSibling;
+    if(!top||!top.classList||!top.classList.contains('table-scroll-top')){
+      top=document.createElement('div');
+      top.className='table-scroll-top';
+      top.innerHTML='<div class="table-scroll-top-inner"></div>';
+      wrap.parentNode.insertBefore(top,wrap);
+      let syncing=false;
+      top.addEventListener('scroll',()=>{if(syncing)return;syncing=true;wrap.scrollLeft=top.scrollLeft;syncing=false;},{passive:true});
+      wrap.addEventListener('scroll',()=>{if(syncing)return;syncing=true;top.scrollLeft=wrap.scrollLeft;syncing=false;},{passive:true});
+    }
+    const inner=top.querySelector('.table-scroll-top-inner');
+    if(inner){
+      const w=Math.max(wrap.scrollWidth,wrap.clientWidth);
+      inner.style.width=w+'px';
+    }
+    top.style.display=wrap.scrollWidth>wrap.clientWidth+4?'block':'none';
+  });
+}
+function refreshWideTableScrollbars(){setTimeout(setupWideTableScrollbars,80);setTimeout(setupWideTableScrollbars,350);}
+window.addEventListener('resize',refreshWideTableScrollbars);
 
 function hasManagerAccess(){return accessRole==='manager'||accessRole==='owner';}
 function hasOwnerAccess(){return accessRole==='owner';}
@@ -880,7 +918,7 @@ async function saveLead(){
 async function deleteLead(id){if(!canDeleteCRM()){toast('ลบ CRM ได้เฉพาะ Owner / Manager');return;}if(!await confirmBox('ลบข้อมูลลูกค้า?','ยืนยันลบ Lead นี้'))return;leads=leads.filter(x=>Number(x.id)!==Number(id));await persistData();renderAll();}
 
 const __oldRenderAllCRM = renderAll;
-renderAll = function(){ensureCRMUI();__oldRenderAllCRM();safeRun('crm',renderCRM);updateAccessUI();};
+renderAll = function(){ensureCRMUI();__oldRenderAllCRM();safeRun('crm',renderCRM);updateAccessUI();refreshWideTableScrollbars();};
 
 const __oldShowViewCRM = showView;
 showView = function(v){
@@ -889,7 +927,9 @@ showView = function(v){
   if(isSalesRole() && v!=='crm'){toast('Sales ดูได้เฉพาะ CRM / ข้อมูลลูกค้า');v='crm';}
   if(v==='crm'&&!hasCRMAccess()){toast('CRM ดูได้เฉพาะ Owner / Manager / Admin / Sales');return;}
   if(v==='team'&&!canViewTeam()){toast('ทีมงานดูได้เฉพาะ Owner / Manager / Admin');return;}
-  return __oldShowViewCRM(v);
+  const out=__oldShowViewCRM(v);
+  refreshWideTableScrollbars();
+  return out;
 };
 
 const __oldUpdateAccessUICRM = updateAccessUI;
