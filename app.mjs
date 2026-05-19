@@ -620,6 +620,7 @@ ensureCRMUI();
 /* ================= Content Schedule Patch ================= */
 let contentSchedule = [];
 let editingContentId = null;
+let contentBatchPosts = [];
 const CONTENT_CHANNELS = [
   ['facebook','Facebook'],['instagram','Instagram'],['tiktok','TikTok'],['lineoa','LINE OA'],['youtube','YouTube'],['shopee','Shopee'],['lazada','Lazada'],['website','Website']
 ];
@@ -710,6 +711,7 @@ function injectContentScheduleStyles(){
   .content-caption-cell{max-width:320px;overflow:hidden;text-overflow:ellipsis}.content-actions{display:flex;gap:6px;justify-content:flex-end}.content-link{font-weight:800;color:#1d4ed8;text-decoration:none}.content-link:hover{text-decoration:underline}
   .content-channel-chips{display:flex;gap:6px;flex-wrap:wrap;min-width:190px}.content-channel-chip{display:inline-flex;align-items:center;border-radius:999px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;padding:4px 8px;font-size:12px;font-weight:900}
   .content-channel-picker{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:8px;margin-top:6px}.content-channel-option{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:800;color:var(--text)}.content-channel-option input{width:16px;height:16px;accent-color:#111827}
+  .content-batch-box{border:1px solid var(--line);border-radius:18px;background:#f8fafc;padding:14px;display:flex;flex-direction:column;gap:10px}.content-batch-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.content-batch-list{display:flex;flex-direction:column;gap:8px}.content-batch-item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px}.content-batch-title{font-weight:900;color:var(--ink);line-height:1.35}.content-batch-meta{font-size:12px;font-weight:800;color:var(--muted);margin-top:4px}.content-batch-empty{font-size:13px;color:var(--muted);font-weight:700;background:#fff;border:1px dashed var(--line);border-radius:12px;padding:12px}
   @media(max-width:1100px){.content-summary{grid-template-columns:repeat(2,1fr)}}`;
   document.head.appendChild(style);
 }
@@ -764,6 +766,10 @@ function ensureContentScheduleUI(){
         <div class="field"><label>สถานะ</label><select id="content-status">${CONTENT_STATUSES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
         <div class="field"><label>ผู้รับผิดชอบ</label><select id="content-assignee"></select></div>
         <div class="field full"><label>หมายเหตุ</label><textarea id="content-note" placeholder="เช่น รอลูกค้าอนุมัติ / ต้องแก้ภาพ / รอ caption"></textarea></div>
+        <div class="field full" id="content-batch-section"><div class="content-batch-box">
+          <div class="content-batch-head"><div><label style="margin:0">เพิ่มหลายโพสต์ในแบรนด์/วันเดียวกัน</label><div class="field-hint">กรอกโพสต์ปัจจุบัน แล้วกด “เพิ่มโพสต์เข้าลิสต์” เพื่อเก็บไว้ จากนั้นกรอกโพสต์ถัดไปต่อได้ทันที</div></div><button class="btn" type="button" onclick="addCurrentContentToBatch()"><i class="ti ti-list-plus"></i>เพิ่มโพสต์เข้าลิสต์</button></div>
+          <div id="content-batch-list" class="content-batch-list"><div class="content-batch-empty">ยังไม่มีโพสต์ในลิสต์ — ถ้าบันทึกเลย ระบบจะบันทึกโพสต์ปัจจุบัน 1 รายการ</div></div>
+        </div></div>
       </div>
       <div class="modal-foot"><button class="btn" onclick="closeContentModal()">ยกเลิก</button><button class="btn primary" id="content-save-button" onclick="saveContentRecord()"><i class="ti ti-check"></i>บันทึกคอนเทนต์</button></div>
     </div>`;
@@ -802,30 +808,96 @@ function renderContentSchedule(){
   el.innerHTML=list.length?list.map(contentRow).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:34px">ยังไม่มีรายการ Content Schedule</td></tr>`;
 }
 function contentRow(x){x=normalizeContentRecord(x);const link=x.assetLink?`<a class="content-link" href="${esc(x.assetLink)}" target="_blank" rel="noopener"><i class="ti ti-link"></i> เปิดไฟล์</a>`:'-';return `<tr><td>${fmtDate(x.postDate)}</td><td><strong>${esc(x.brand||'-')}</strong></td><td>${contentChannelChips(x.channels)}</td><td>${esc(contentLabel(CONTENT_TYPES,x.contentType))}</td><td>${esc(x.title||'-')}</td><td>${link}</td><td class="content-caption-cell" title="${esc(x.caption)}">${esc(x.caption||'-')}</td><td>${contentStatusBadge(x.status)}</td><td>${esc(x.assignee||'-')}</td><td class="content-caption-cell" title="${esc(x.note)}">${esc(x.note||'-')}</td><td><div class="content-actions"><button class="icon-btn" title="แก้ไข" onclick="openContentModal(${Number(x.id)})"><i class="ti ti-edit"></i></button>${canDeleteContentSchedule()?`<button class="icon-btn" title="ลบ" onclick="deleteContentRecord(${Number(x.id)})"><i class="ti ti-trash"></i></button>`:''}</div></td></tr>`;}
+
+function readContentDraftFromForm(requireTitle=true){
+  let link=val('content-asset-link').trim();
+  if(link&&!/^https?:\/\//i.test(link))link='https://'+link;
+  const channels=readContentChannelGrid();
+  const draft={
+    postDate:val('content-post-date')||today(),
+    brand:val('content-brand'),
+    channels,
+    contentType:val('content-type')||'image',
+    title:val('content-title').trim(),
+    assetLink:link,
+    caption:val('content-caption').trim(),
+    status:val('content-status')||'draft',
+    assignee:val('content-assignee')||currentActorName(),
+    note:val('content-note').trim()
+  };
+  if(!draft.brand){toast('กรุณาเลือกแบรนด์');return null;}
+  if(!draft.channels.length){toast('กรุณาเลือกช่องทางอย่างน้อย 1 ช่องทาง');return null;}
+  if(requireTitle&&!draft.title){toast('กรุณาใส่ชื่อโพสต์ / หัวข้อ');return null;}
+  return draft;
+}
+function currentContentFormHasPostData(){
+  return Boolean(val('content-title').trim()||val('content-asset-link').trim()||val('content-caption').trim()||val('content-note').trim());
+}
+function clearContentPostFieldsForNext(){
+  setVal('content-title','');
+  setVal('content-asset-link','');
+  setVal('content-caption','');
+  setVal('content-note','');
+  setTimeout(()=>document.getElementById('content-title')?.focus(),50);
+}
+function renderContentBatchList(){
+  const el=document.getElementById('content-batch-list'); if(!el)return;
+  if(!contentBatchPosts.length){el.innerHTML='<div class="content-batch-empty">ยังไม่มีโพสต์ในลิสต์ — ถ้าบันทึกเลย ระบบจะบันทึกโพสต์ปัจจุบัน 1 รายการ</div>';return;}
+  el.innerHTML=contentBatchPosts.map((x,i)=>`<div class="content-batch-item"><div><div class="content-batch-title">${i+1}. ${esc(x.title||'-')}</div><div class="content-batch-meta">${esc(x.brand||'-')} • ${fmtDate(x.postDate)} • ${contentChannelLabels(x.channels).map(esc).join(' + ')} • ${esc(contentLabel(CONTENT_TYPES,x.contentType))}</div></div><button class="icon-btn" type="button" title="เอาออกจากลิสต์" onclick="removeContentBatchPost(${i})"><i class="ti ti-x"></i></button></div>`).join('');
+}
+function addCurrentContentToBatch(){
+  if(editingContentId){toast('โหมดแก้ไขบันทึกได้ทีละโพสต์');return;}
+  const draft=readContentDraftFromForm(true);
+  if(!draft)return;
+  contentBatchPosts.push(draft);
+  renderContentBatchList();
+  clearContentPostFieldsForNext();
+  toast('เพิ่มโพสต์เข้าลิสต์แล้ว');
+}
+function removeContentBatchPost(i){
+  contentBatchPosts.splice(i,1);
+  renderContentBatchList();
+}
 function populateContentSelects(){
   const b=document.getElementById('content-brand'); if(b){b.innerHTML='<option value="">-- เลือกแบรนด์ --</option>'+brands.map(x=>`<option value="${esc(brandName(x))}">${esc(brandName(x))}</option>`).join('');}
   const a=document.getElementById('content-assignee'); if(a){const names=contentTeamNames();a.innerHTML='<option value="">-- เลือก --</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');}
 }
 function openContentModal(id=null){
   if(!hasContentScheduleAccess()){toast('Content Schedule ดูได้เฉพาะ Owner / Manager / Graphic / Content');return;}
-  ensureContentScheduleUI(); editingContentId=id; populateContentSelects();
+  ensureContentScheduleUI(); editingContentId=id; contentBatchPosts=[]; populateContentSelects();
   const r=id?normalizeContentRecord(contentSchedule.find(x=>Number(x.id)===Number(id))||{}):null;
   document.getElementById('content-modal-title').textContent=id?'แก้ไขคอนเทนต์':'เพิ่มคอนเทนต์';
   setVal('content-post-date',r?.postDate||today()); setVal('content-brand',r?.brand||''); renderContentChannelGrid(r?.channels||['facebook']); setVal('content-type',r?.contentType||'image'); setVal('content-title',r?.title||''); setVal('content-asset-link',r?.assetLink||''); setVal('content-caption',r?.caption||''); setVal('content-status',r?.status||'draft'); setVal('content-assignee',r?.assignee||currentActorName()); setVal('content-note',r?.note||'');
+  const batchSection=document.getElementById('content-batch-section'); if(batchSection)batchSection.style.display=id?'none':'block';
+  renderContentBatchList();
   document.getElementById('content-modal').classList.add('open'); setTimeout(()=>document.getElementById('content-title')?.focus(),80);
 }
 function closeContentModal(){document.getElementById('content-modal')?.classList.remove('open');}
 async function saveContentRecord(){
   if(!hasContentScheduleAccess()){toast('ไม่มีสิทธิ์บันทึก Content Schedule');return;}
-  const brand=val('content-brand'); const title=val('content-title').trim();
-  if(!brand){toast('กรุณาเลือกแบรนด์');return;} if(!title){toast('กรุณาใส่ชื่อโพสต์ / หัวข้อ');return;}
-  let link=val('content-asset-link').trim(); if(link&&!/^https?:\/\//i.test(link))link='https://'+link;
-  const channels=readContentChannelGrid();
-  if(!channels.length){toast('กรุณาเลือกช่องทางอย่างน้อย 1 ช่องทาง');return;}
-  const old=contentSchedule.find(x=>Number(x.id)===Number(editingContentId));
-  const rec=normalizeContentRecord({id:editingContentId||Date.now(),postDate:val('content-post-date')||today(),brand,channels,contentType:val('content-type'),title,assetLink:link,caption:val('content-caption').trim(),status:val('content-status'),assignee:val('content-assignee')||currentActorName(),note:val('content-note').trim(),createdAt:old?.createdAt,updatedAt:new Date().toISOString()});
-  if(editingContentId)contentSchedule=contentSchedule.map(x=>Number(x.id)===Number(editingContentId)?rec:x);else contentSchedule.unshift(rec);
-  closeContentModal(); await persistData(); renderContentSchedule();
+  if(editingContentId){
+    const draft=readContentDraftFromForm(true);
+    if(!draft)return;
+    const old=contentSchedule.find(x=>Number(x.id)===Number(editingContentId));
+    const rec=normalizeContentRecord({id:editingContentId,...draft,createdAt:old?.createdAt,updatedAt:new Date().toISOString()});
+    contentSchedule=contentSchedule.map(x=>Number(x.id)===Number(editingContentId)?rec:x);
+    closeContentModal(); await persistData(); renderContentSchedule(); toast('บันทึกคอนเทนต์แล้ว'); return;
+  }
+  const records=[...contentBatchPosts];
+  if(currentContentFormHasPostData() || !records.length){
+    const current=readContentDraftFromForm(true);
+    if(!current)return;
+    records.push(current);
+  }else{
+    const base=readContentDraftFromForm(false);
+    if(!base)return;
+  }
+  const now=Date.now();
+  const stamp=new Date().toISOString();
+  const normalized=records.map((r,i)=>normalizeContentRecord({id:now+i,...r,createdAt:stamp,updatedAt:stamp}));
+  contentSchedule=[...normalized.reverse(),...contentSchedule];
+  contentBatchPosts=[];
+  closeContentModal(); await persistData(); renderContentSchedule(); toast(`บันทึกคอนเทนต์ ${normalized.length} รายการแล้ว`);
 }
 async function deleteContentRecord(id){
   if(!canDeleteContentSchedule()){toast('ลบ Content Schedule ได้เฉพาะ Owner / Manager');return;}
@@ -855,7 +927,7 @@ updateAccessUI = function(){
 };
 const __oldBindActionButtonsContent = bindActionButtons;
 bindActionButtons = function(){__oldBindActionButtonsContent();const btn=document.getElementById('content-add-button');if(btn){btn.type='button';btn.onclick=(e)=>{e.preventDefault();openContentModal();return false;};}};
-window.renderContentSchedule=renderContentSchedule;window.renderContentChannelGrid=renderContentChannelGrid;window.openContentModal=openContentModal;window.closeContentModal=closeContentModal;window.saveContentRecord=saveContentRecord;window.deleteContentRecord=deleteContentRecord;window.clearContentFilters=clearContentFilters;window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=updateAccessUI;
+window.renderContentSchedule=renderContentSchedule;window.renderContentChannelGrid=renderContentChannelGrid;window.addCurrentContentToBatch=addCurrentContentToBatch;window.removeContentBatchPost=removeContentBatchPost;window.openContentModal=openContentModal;window.closeContentModal=closeContentModal;window.saveContentRecord=saveContentRecord;window.deleteContentRecord=deleteContentRecord;window.clearContentFilters=clearContentFilters;window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=updateAccessUI;
 ensureContentScheduleUI();
 /* ================= End Content Schedule Patch ================= */
 
