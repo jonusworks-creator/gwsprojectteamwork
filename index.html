@@ -108,6 +108,11 @@ button,input,select,textarea{font-family:var(--font)}
 .sticky-h-scroll::-webkit-scrollbar{height:12px}.sticky-h-scroll::-webkit-scrollbar-track{background:#eef2f7;border-radius:999px}.sticky-h-scroll::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}.sticky-h-scroll::-webkit-scrollbar-thumb:hover{background:#64748b}
 .sticky-scroll-spacer{height:36px;display:none}.has-sticky-scroll .sticky-scroll-spacer{display:block}
 @media(max-width:900px){.sticky-h-scroll{left:12px;right:12px;bottom:10px;height:26px}.sticky-h-scroll::-webkit-scrollbar{height:14px}}
+/* Hide native small horizontal scrollbars inside table boxes. The floating sticky scrollbar remains the only visible horizontal control. */
+.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{overflow-x:hidden!important;}
+.finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar{display:none!important;width:0!important;height:0!important;}
+.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{scrollbar-width:none!important;-ms-overflow-style:none!important;}
+
 
 </style>
 </head>
