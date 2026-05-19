@@ -617,4 +617,216 @@ window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=update
 ensureCRMUI();
 /* ================= End CRM Patch ================= */
 
+/* ================= Content Schedule Patch ================= */
+let contentSchedule = [];
+let editingContentId = null;
+const CONTENT_CHANNELS = [
+  ['facebook','Facebook'],['instagram','Instagram'],['tiktok','TikTok'],['lineoa','LINE OA'],['youtube','YouTube'],['shopee','Shopee'],['lazada','Lazada'],['website','Website']
+];
+const CONTENT_TYPES = [
+  ['image','ภาพเดี่ยว'],['album','อัลบั้ม'],['reel','Reels / Short Video'],['video','วิดีโอ'],['story','Story'],['article','บทความ'],['other','อื่น ๆ']
+];
+const CONTENT_STATUSES = [
+  ['draft','ร่าง'],['review','รอตรวจ'],['approved','อนุมัติแล้ว'],['ready','พร้อมลง'],['posted','ลงแล้ว'],['revise','แก้ไข']
+];
+function hasContentScheduleAccess(){return ['owner','manager','graphic','content'].includes(accessRole);}
+function canDeleteContentSchedule(){return ['owner','manager'].includes(accessRole);}
+function normalizeContentRecord(o={}){
+  return {
+    id:o.id||Date.now(),
+    postDate:o.postDate||o.date||today(),
+    brand:o.brand||'',
+    channel:o.channel||'facebook',
+    contentType:o.contentType||o.type||'image',
+    title:o.title||o.postTitle||'',
+    assetLink:o.assetLink||o.imageLink||o.fileLink||'',
+    caption:o.caption||'',
+    status:o.status||'draft',
+    assignee:o.assignee||o.owner||'',
+    note:o.note||'',
+    createdAt:o.createdAt||new Date().toISOString(),
+    updatedAt:o.updatedAt||''
+  };
+}
+const __oldNormalizeDataContent = normalizeData;
+normalizeData = function(data){
+  __oldNormalizeDataContent(data);
+  contentSchedule = Array.isArray(data?.contentSchedule) ? data.contentSchedule.map(normalizeContentRecord) : [];
+};
+persistData = async function(){
+  isSaving=true;
+  try{
+    if(docRef){
+      await setDoc(docRef,{brands,team,tasks,financial,tracking,leads,contentSchedule,updatedAt:serverTimestamp()});
+      setStatus(true);
+    }
+    toast('บันทึกแล้ว');
+  }catch(e){console.error(e);toast('บันทึกไม่สำเร็จ');setStatus(false);}finally{setTimeout(()=>{isSaving=false},250);}
+};
+function contentLabel(arr,val){return Object.fromEntries(arr)[val]||val||'-';}
+function contentStatusBadge(v){return `<span class="content-status ${esc(v||'draft')}">${esc(contentLabel(CONTENT_STATUSES,v||'draft'))}</span>`;}
+function contentTeamNames(){
+  const allowed=['graphic','content','manager'];
+  const list=team.filter(m=>allowed.includes(normalizeRole(m.role))).map(m=>m.name);
+  return list.length?list:team.map(m=>m.name);
+}
+function injectContentScheduleStyles(){
+  if(document.getElementById('content-schedule-style'))return;
+  const style=document.createElement('style');
+  style.id='content-schedule-style';
+  style.textContent=`
+  .content-summary{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+  .content-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow)}
+  .content-card .num{font-size:30px;font-weight:900;color:var(--ink);line-height:1}.content-card .label{font-size:13px;color:var(--muted);font-weight:800;margin-top:8px}
+  .content-table-wrap{overflow-x:auto;border-radius:18px}.content-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;background:#fff;font-size:14px}
+  .content-table th,.content-table td{white-space:nowrap;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}.content-table th{background:#0b2c63;color:#fff;font-weight:900;position:sticky;top:0;z-index:1}.content-table tr:hover td{background:#f8fafc}
+  .content-status{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900}.content-status.draft{background:#eff6ff;color:#1d4ed8}.content-status.review{background:#fef3c7;color:#b45309}.content-status.approved{background:#e0f2fe;color:#0369a1}.content-status.ready{background:#dcfce7;color:#15803d}.content-status.posted{background:#d1fae5;color:#047857}.content-status.revise{background:#fee2e2;color:#b91c1c}
+  .content-caption-cell{max-width:320px;overflow:hidden;text-overflow:ellipsis}.content-actions{display:flex;gap:6px;justify-content:flex-end}.content-link{font-weight:800;color:#1d4ed8;text-decoration:none}.content-link:hover{text-decoration:underline}
+  @media(max-width:1100px){.content-summary{grid-template-columns:repeat(2,1fr)}}`;
+  document.head.appendChild(style);
+}
+function ensureContentScheduleUI(){
+  injectContentScheduleStyles();
+  const trackingNav=document.querySelector('.nav-item[data-view="tracking"]');
+  if(trackingNav&&!document.querySelector('.nav-item[data-view="content-schedule"]')){
+    const nav=document.createElement('div');
+    nav.className='nav-item'; nav.dataset.view='content-schedule'; nav.onclick=()=>showView('content-schedule');
+    nav.innerHTML='<i class="ti ti-calendar-event"></i><span>Content Schedule</span>';
+    trackingNav.insertAdjacentElement('beforebegin',nav);
+  }
+  const trackingSection=document.getElementById('view-tracking') || document.getElementById('view-team');
+  if(trackingSection&&!document.getElementById('view-content-schedule')){
+    const sec=document.createElement('section');
+    sec.id='view-content-schedule'; sec.className='view';
+    sec.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+        <div><div class="section-title">Content Schedule</div><div class="section-sub">จัดตารางคอนเทนต์สำหรับหลายแบรนด์ เก็บลิงก์ภาพ/ไฟล์ และ Caption สำหรับลงช่องทางโซเชียล</div></div>
+        <button class="btn primary" id="content-add-button" type="button" onclick="openContentModal()"><i class="ti ti-plus"></i>เพิ่มคอนเทนต์</button>
+      </div>
+      <div class="content-summary" id="content-summary"></div>
+      <div class="panel panel-pad" style="margin-bottom:14px">
+        <div class="filters" style="grid-template-columns:2fr repeat(4,minmax(150px,1fr)) auto;margin-bottom:0">
+          <input class="search-input" id="content-search" placeholder="ค้นหาแบรนด์ ชื่อโพสต์ Caption ผู้รับผิดชอบ" oninput="renderContentSchedule()">
+          <select class="filter-select" id="content-filter-brand" onchange="renderContentSchedule()"><option value="">แบรนด์ทั้งหมด</option></select>
+          <select class="filter-select" id="content-filter-channel" onchange="renderContentSchedule()"><option value="">ช่องทางทั้งหมด</option>${CONTENT_CHANNELS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+          <select class="filter-select" id="content-filter-status" onchange="renderContentSchedule()"><option value="">สถานะทั้งหมด</option>${CONTENT_STATUSES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+          <input class="filter-select" id="content-filter-month" type="month" onchange="renderContentSchedule()">
+          <button class="btn" type="button" onclick="clearContentFilters()"><i class="ti ti-eraser"></i>ล้าง</button>
+        </div>
+      </div>
+      <div class="panel content-table-wrap"><table class="content-table"><thead><tr>
+        <th>วันที่ลง</th><th>แบรนด์</th><th>ช่องทาง</th><th>ประเภท</th><th>ชื่อโพสต์ / หัวข้อ</th><th>ลิงก์รูป / ไฟล์</th><th>Preview Caption</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>หมายเหตุ</th><th></th>
+      </tr></thead><tbody id="content-list"></tbody></table></div>`;
+    trackingSection.insertAdjacentElement('beforebegin',sec);
+  }
+  if(!document.getElementById('content-modal')){
+    const modal=document.createElement('div');
+    modal.className='modal-overlay'; modal.id='content-modal';
+    modal.setAttribute('onclick','if(event.target===this)closeContentModal()');
+    modal.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-head"><h2 id="content-modal-title">เพิ่มคอนเทนต์</h2><button class="icon-btn" onclick="closeContentModal()"><i class="ti ti-x"></i></button></div>
+      <div class="modal-body">
+        <div class="field"><label>วันที่ลง</label><input id="content-post-date" type="date"></div>
+        <div class="field"><label>แบรนด์</label><select id="content-brand"></select></div>
+        <div class="field"><label>ช่องทาง</label><select id="content-channel">${CONTENT_CHANNELS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="field"><label>ประเภทคอนเทนต์</label><select id="content-type">${CONTENT_TYPES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="field full"><label>ชื่อโพสต์ / หัวข้อ</label><input id="content-title" type="text" placeholder="เช่น HOB Serum Benefits"></div>
+        <div class="field full"><label>ลิงก์รูป / ไฟล์คอนเทนต์</label><input id="content-asset-link" type="url" placeholder="วางลิงก์ Google Drive / Canva / Meta / รูปภาพ"></div>
+        <div class="field full"><label>Caption</label><textarea id="content-caption" placeholder="ข้อความ Caption สำหรับโพสต์"></textarea></div>
+        <div class="field"><label>สถานะ</label><select id="content-status">${CONTENT_STATUSES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="field"><label>ผู้รับผิดชอบ</label><select id="content-assignee"></select></div>
+        <div class="field full"><label>หมายเหตุ</label><textarea id="content-note" placeholder="เช่น รอลูกค้าอนุมัติ / ต้องแก้ภาพ / รอ caption"></textarea></div>
+      </div>
+      <div class="modal-foot"><button class="btn" onclick="closeContentModal()">ยกเลิก</button><button class="btn primary" id="content-save-button" onclick="saveContentRecord()"><i class="ti ti-check"></i>บันทึกคอนเทนต์</button></div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+}
+function renderContentFilters(){
+  const sel=document.getElementById('content-filter-brand'); if(sel){const old=sel.value;sel.innerHTML='<option value="">แบรนด์ทั้งหมด</option>'+brands.map(b=>`<option value="${esc(brandName(b))}">${esc(brandName(b))}</option>`).join('');sel.value=old;}
+}
+function filteredContentSchedule(){
+  const q=(document.getElementById('content-search')?.value||'').toLowerCase().trim();
+  const b=document.getElementById('content-filter-brand')?.value||'';
+  const c=document.getElementById('content-filter-channel')?.value||'';
+  const s=document.getElementById('content-filter-status')?.value||'';
+  const m=document.getElementById('content-filter-month')?.value||'';
+  return contentSchedule.map(normalizeContentRecord).filter(x=>{
+    const hay=[x.postDate,x.brand,x.channel,x.contentType,x.title,x.assetLink,x.caption,x.status,x.assignee,x.note].join(' ').toLowerCase();
+    return (!q||hay.includes(q))&&(!b||x.brand===b)&&(!c||x.channel===c)&&(!s||x.status===s)&&(!m||String(x.postDate||'').startsWith(m));
+  });
+}
+function renderContentSummary(){
+  const el=document.getElementById('content-summary'); if(!el)return;
+  const list=filteredContentSchedule(); const t=today();
+  const todayCount=list.filter(x=>x.postDate===t).length;
+  const review=list.filter(x=>x.status==='review').length;
+  const ready=list.filter(x=>x.status==='ready').length;
+  const brandCount=new Set(list.map(x=>x.brand).filter(Boolean)).size;
+  el.innerHTML=[['โพสต์วันนี้',todayCount,'รายการ'],['รอตรวจ',review,'รายการ'],['พร้อมลง',ready,'รายการ'],['แบรนด์ทั้งหมด',brandCount,'แบรนด์']].map(x=>`<div class="content-card"><div class="num">${x[1]}</div><div class="label">${x[0]}</div><div class="section-sub" style="margin-top:6px">${x[2]}</div></div>`).join('');
+}
+function renderContentSchedule(){
+  ensureContentScheduleUI();
+  if(!hasContentScheduleAccess()){const el=document.getElementById('content-list');if(el)el.innerHTML='';return;}
+  renderContentFilters(); renderContentSummary();
+  const el=document.getElementById('content-list'); if(!el)return;
+  const list=filteredContentSchedule().sort((a,b)=>String(a.postDate||'9999').localeCompare(String(b.postDate||'9999')) || String(a.brand||'').localeCompare(String(b.brand||'')));
+  el.innerHTML=list.length?list.map(contentRow).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:34px">ยังไม่มีรายการ Content Schedule</td></tr>`;
+}
+function contentRow(x){x=normalizeContentRecord(x);const link=x.assetLink?`<a class="content-link" href="${esc(x.assetLink)}" target="_blank" rel="noopener"><i class="ti ti-link"></i> เปิดไฟล์</a>`:'-';return `<tr><td>${fmtDate(x.postDate)}</td><td><strong>${esc(x.brand||'-')}</strong></td><td>${esc(contentLabel(CONTENT_CHANNELS,x.channel))}</td><td>${esc(contentLabel(CONTENT_TYPES,x.contentType))}</td><td>${esc(x.title||'-')}</td><td>${link}</td><td class="content-caption-cell" title="${esc(x.caption)}">${esc(x.caption||'-')}</td><td>${contentStatusBadge(x.status)}</td><td>${esc(x.assignee||'-')}</td><td class="content-caption-cell" title="${esc(x.note)}">${esc(x.note||'-')}</td><td><div class="content-actions"><button class="icon-btn" title="แก้ไข" onclick="openContentModal(${Number(x.id)})"><i class="ti ti-edit"></i></button>${canDeleteContentSchedule()?`<button class="icon-btn" title="ลบ" onclick="deleteContentRecord(${Number(x.id)})"><i class="ti ti-trash"></i></button>`:''}</div></td></tr>`;}
+function populateContentSelects(){
+  const b=document.getElementById('content-brand'); if(b){b.innerHTML='<option value="">-- เลือกแบรนด์ --</option>'+brands.map(x=>`<option value="${esc(brandName(x))}">${esc(brandName(x))}</option>`).join('');}
+  const a=document.getElementById('content-assignee'); if(a){const names=contentTeamNames();a.innerHTML='<option value="">-- เลือก --</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');}
+}
+function openContentModal(id=null){
+  if(!hasContentScheduleAccess()){toast('Content Schedule ดูได้เฉพาะ Owner / Manager / Graphic / Content');return;}
+  ensureContentScheduleUI(); editingContentId=id; populateContentSelects();
+  const r=id?normalizeContentRecord(contentSchedule.find(x=>Number(x.id)===Number(id))||{}):null;
+  document.getElementById('content-modal-title').textContent=id?'แก้ไขคอนเทนต์':'เพิ่มคอนเทนต์';
+  setVal('content-post-date',r?.postDate||today()); setVal('content-brand',r?.brand||''); setVal('content-channel',r?.channel||'facebook'); setVal('content-type',r?.contentType||'image'); setVal('content-title',r?.title||''); setVal('content-asset-link',r?.assetLink||''); setVal('content-caption',r?.caption||''); setVal('content-status',r?.status||'draft'); setVal('content-assignee',r?.assignee||currentActorName()); setVal('content-note',r?.note||'');
+  document.getElementById('content-modal').classList.add('open'); setTimeout(()=>document.getElementById('content-title')?.focus(),80);
+}
+function closeContentModal(){document.getElementById('content-modal')?.classList.remove('open');}
+async function saveContentRecord(){
+  if(!hasContentScheduleAccess()){toast('ไม่มีสิทธิ์บันทึก Content Schedule');return;}
+  const brand=val('content-brand'); const title=val('content-title').trim();
+  if(!brand){toast('กรุณาเลือกแบรนด์');return;} if(!title){toast('กรุณาใส่ชื่อโพสต์ / หัวข้อ');return;}
+  let link=val('content-asset-link').trim(); if(link&&!/^https?:\/\//i.test(link))link='https://'+link;
+  const old=contentSchedule.find(x=>Number(x.id)===Number(editingContentId));
+  const rec=normalizeContentRecord({id:editingContentId||Date.now(),postDate:val('content-post-date')||today(),brand,channel:val('content-channel'),contentType:val('content-type'),title,assetLink:link,caption:val('content-caption').trim(),status:val('content-status'),assignee:val('content-assignee')||currentActorName(),note:val('content-note').trim(),createdAt:old?.createdAt,updatedAt:new Date().toISOString()});
+  if(editingContentId)contentSchedule=contentSchedule.map(x=>Number(x.id)===Number(editingContentId)?rec:x);else contentSchedule.unshift(rec);
+  closeContentModal(); await persistData(); renderContentSchedule();
+}
+async function deleteContentRecord(id){
+  if(!canDeleteContentSchedule()){toast('ลบ Content Schedule ได้เฉพาะ Owner / Manager');return;}
+  if(!await confirmBox('ลบรายการคอนเทนต์?','ยืนยันลบรายการนี้ออกจาก Content Schedule?'))return;
+  contentSchedule=contentSchedule.filter(x=>Number(x.id)!==Number(id)); await persistData(); renderContentSchedule();
+}
+function clearContentFilters(){['content-search','content-filter-brand','content-filter-channel','content-filter-status','content-filter-month'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});renderContentSchedule();}
+const __oldShowViewContent = showView;
+showView = function(v){
+  if(v==='content-schedule'&&!hasContentScheduleAccess()){toast('Content Schedule ดูได้เฉพาะ Owner / Manager / Graphic / Content');return;}
+  __oldShowViewContent(v);
+  if(v==='content-schedule'){
+    const titleEl=document.getElementById('view-title'); if(titleEl)titleEl.innerHTML='Content <span>Schedule</span>';
+    renderContentSchedule();
+  }
+};
+const __oldRenderAllContent = renderAll;
+renderAll = function(){__oldRenderAllContent();safeRun('content-schedule',renderContentSchedule);};
+const __oldUpdateAccessUIContent = updateAccessUI;
+updateAccessUI = function(){
+  __oldUpdateAccessUIContent();
+  const nav=document.querySelector('.nav-item[data-view="content-schedule"]'); if(nav)nav.style.display=hasContentScheduleAccess()?'flex':'none';
+  const add=document.getElementById('content-add-button'); if(add)add.style.display=hasContentScheduleAccess()?'inline-flex':'none';
+  if(currentView==='content-schedule'&&!hasContentScheduleAccess()){
+    if(hasCRMAccess())showView('crm'); else showView('tasks');
+  }
+};
+const __oldBindActionButtonsContent = bindActionButtons;
+bindActionButtons = function(){__oldBindActionButtonsContent();const btn=document.getElementById('content-add-button');if(btn){btn.type='button';btn.onclick=(e)=>{e.preventDefault();openContentModal();return false;};}};
+window.renderContentSchedule=renderContentSchedule;window.openContentModal=openContentModal;window.closeContentModal=closeContentModal;window.saveContentRecord=saveContentRecord;window.deleteContentRecord=deleteContentRecord;window.clearContentFilters=clearContentFilters;window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=updateAccessUI;
+ensureContentScheduleUI();
+/* ================= End Content Schedule Patch ================= */
+
 init();
