@@ -142,6 +142,7 @@ button,input,select,textarea{font-family:var(--font)}
     <div class="nav-item active" data-view="tasks" onclick="showView('tasks')"><i class="ti ti-layout-list"></i><span>งานทั้งหมด</span></div>
     <div class="nav-item" data-view="brands" onclick="showView('brands')"><i class="ti ti-building-store"></i><span>แบรนด์ลูกค้า</span></div>
     <div class="nav-item" data-view="brand-info" onclick="showView('brand-info')"><i class="ti ti-photo-share"></i><span>ข้อมูลแต่ละแบรนด์</span></div>
+    <div class="nav-item" data-view="content-schedule" onclick="showView('content-schedule')"><i class="ti ti-calendar-event"></i><span>Content Schedule</span></div>
     <div class="nav-item" data-view="tracking" onclick="showView('tracking')"><i class="ti ti-chart-line"></i><span>Project Tracking</span></div>
     <div class="nav-item" data-view="team" onclick="showView('team')"><i class="ti ti-users"></i><span>ทีมงาน</span></div>
     <div class="sidebar-footer"><div class="user-chip"><div class="user-avatar" id="signed-user-avatar">GS</div><div><div class="user-name" id="signed-user-name">ผู้ใช้งาน</div><div class="user-role" id="signed-user-role">Graphic</div></div></div></div>
@@ -199,6 +200,57 @@ button,input,select,textarea{font-family:var(--font)}
       <section id="view-brand-info" class="view">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap"><div><div class="section-title">ข้อมูลของแต่ละแบรนด์</div><div class="section-sub">รวมลิงก์รูปสินค้า ไฟล์แบรนด์ ไกด์ไลน์ และข้อมูลที่ทีมกราฟิกต้องใช้</div></div><button class="btn" onclick="showView('brands')"><i class="ti ti-settings"></i>จัดการแบรนด์</button></div>
         <div id="brand-info-grid" class="cards-grid"></div>
+      </section>
+
+
+      <section id="view-content-schedule" class="view">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+          <div>
+            <div class="section-title">Content Schedule</div>
+            <div class="section-sub">จัดตารางคอนเทนต์สำหรับหลายแบรนด์ เก็บลิงก์ภาพ/ไฟล์ และ Caption สำหรับลงช่องทางโซเชียล</div>
+          </div>
+          <button class="btn primary" id="content-add-button" type="button" onclick="openContentModal()"><i class="ti ti-plus"></i>เพิ่มคอนเทนต์</button>
+        </div>
+
+        <div class="content-summary" id="content-summary"></div>
+
+        <div class="panel panel-pad" style="margin-bottom:14px">
+          <div class="filters" style="grid-template-columns:2fr repeat(4,minmax(150px,1fr)) auto;margin-bottom:0">
+            <input class="search-input" id="content-search" placeholder="ค้นหาแบรนด์ ชื่อโพสต์ Caption ผู้รับผิดชอบ" oninput="renderContentSchedule()">
+            <select class="filter-select" id="content-filter-brand" onchange="renderContentSchedule()"><option value="">แบรนด์ทั้งหมด</option></select>
+            <select class="filter-select" id="content-filter-channel" onchange="renderContentSchedule()">
+              <option value="">ช่องทางทั้งหมด</option>
+              <option value="facebook">Facebook</option>
+              <option value="instagram">Instagram</option>
+              <option value="tiktok">TikTok</option>
+              <option value="lineoa">LINE OA</option>
+              <option value="youtube">YouTube</option>
+              <option value="shopee">Shopee</option>
+              <option value="lazada">Lazada</option>
+              <option value="website">Website</option>
+            </select>
+            <select class="filter-select" id="content-filter-status" onchange="renderContentSchedule()">
+              <option value="">สถานะทั้งหมด</option>
+              <option value="draft">ร่าง</option>
+              <option value="review">รอตรวจ</option>
+              <option value="approved">อนุมัติแล้ว</option>
+              <option value="ready">พร้อมลง</option>
+              <option value="posted">ลงแล้ว</option>
+              <option value="revise">แก้ไข</option>
+            </select>
+            <input class="filter-select" id="content-filter-month" type="month" onchange="renderContentSchedule()">
+            <button class="btn" type="button" onclick="clearContentFilters()"><i class="ti ti-eraser"></i>ล้าง</button>
+          </div>
+        </div>
+
+        <div class="panel content-table-wrap">
+          <table class="content-table">
+            <thead><tr>
+              <th>วันที่ลง</th><th>แบรนด์</th><th>ช่องทาง</th><th>ประเภท</th><th>ชื่อโพสต์ / หัวข้อ</th><th>ลิงก์รูป / ไฟล์</th><th>Preview Caption</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>หมายเหตุ</th><th></th>
+            </tr></thead>
+            <tbody id="content-list"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="view-tracking" class="view">
