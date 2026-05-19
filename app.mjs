@@ -631,12 +631,24 @@ const CONTENT_STATUSES = [
 ];
 function hasContentScheduleAccess(){return ['owner','manager','graphic','content'].includes(accessRole);}
 function canDeleteContentSchedule(){return ['owner','manager'].includes(accessRole);}
+function normalizeContentChannels(o={}){
+  const valid=new Set(CONTENT_CHANNELS.map(([v])=>v));
+  let arr=[];
+  if(Array.isArray(o.channels))arr=o.channels;
+  else if(Array.isArray(o.channel))arr=o.channel;
+  else if(typeof o.channels==='string')arr=o.channels.split(',');
+  else if(o.channel)arr=[o.channel];
+  arr=arr.map(x=>String(x||'').trim()).filter(x=>valid.has(x));
+  return arr.length?[...new Set(arr)]:['facebook'];
+}
 function normalizeContentRecord(o={}){
+  const channels=normalizeContentChannels(o);
   return {
     id:o.id||Date.now(),
     postDate:o.postDate||o.date||today(),
     brand:o.brand||'',
-    channel:o.channel||'facebook',
+    channels,
+    channel:channels[0]||'facebook',
     contentType:o.contentType||o.type||'image',
     title:o.title||o.postTitle||'',
     assetLink:o.assetLink||o.imageLink||o.fileLink||'',
@@ -647,6 +659,20 @@ function normalizeContentRecord(o={}){
     createdAt:o.createdAt||new Date().toISOString(),
     updatedAt:o.updatedAt||''
   };
+}
+function contentChannelLabels(channels){
+  return normalizeContentChannels({channels}).map(v=>contentLabel(CONTENT_CHANNELS,v));
+}
+function contentChannelChips(channels){
+  return `<div class="content-channel-chips">${contentChannelLabels(channels).map(l=>`<span class="content-channel-chip">${esc(l)}</span>`).join('')}</div>`;
+}
+function renderContentChannelGrid(selected=[]){
+  const el=document.getElementById('content-channel-grid'); if(!el)return;
+  const set=new Set(normalizeContentChannels({channels:selected}));
+  el.innerHTML=CONTENT_CHANNELS.map(([v,l])=>`<label class="content-channel-option"><input type="checkbox" class="content-channel-check" value="${esc(v)}" ${set.has(v)?'checked':''}> <span>${esc(l)}</span></label>`).join('');
+}
+function readContentChannelGrid(){
+  return [...document.querySelectorAll('#content-channel-grid .content-channel-check:checked')].map(x=>x.value);
 }
 const __oldNormalizeDataContent = normalizeData;
 normalizeData = function(data){
@@ -682,6 +708,8 @@ function injectContentScheduleStyles(){
   .content-table th,.content-table td{white-space:nowrap;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}.content-table th{background:#0b2c63;color:#fff;font-weight:900;position:sticky;top:0;z-index:1}.content-table tr:hover td{background:#f8fafc}
   .content-status{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900}.content-status.draft{background:#eff6ff;color:#1d4ed8}.content-status.review{background:#fef3c7;color:#b45309}.content-status.approved{background:#e0f2fe;color:#0369a1}.content-status.ready{background:#dcfce7;color:#15803d}.content-status.posted{background:#d1fae5;color:#047857}.content-status.revise{background:#fee2e2;color:#b91c1c}
   .content-caption-cell{max-width:320px;overflow:hidden;text-overflow:ellipsis}.content-actions{display:flex;gap:6px;justify-content:flex-end}.content-link{font-weight:800;color:#1d4ed8;text-decoration:none}.content-link:hover{text-decoration:underline}
+  .content-channel-chips{display:flex;gap:6px;flex-wrap:wrap;min-width:190px}.content-channel-chip{display:inline-flex;align-items:center;border-radius:999px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;padding:4px 8px;font-size:12px;font-weight:900}
+  .content-channel-picker{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:8px;margin-top:6px}.content-channel-option{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;font-weight:800;color:var(--text)}.content-channel-option input{width:16px;height:16px;accent-color:#111827}
   @media(max-width:1100px){.content-summary{grid-template-columns:repeat(2,1fr)}}`;
   document.head.appendChild(style);
 }
@@ -706,7 +734,7 @@ function ensureContentScheduleUI(){
       <div class="content-summary" id="content-summary"></div>
       <div class="panel panel-pad" style="margin-bottom:14px">
         <div class="filters" style="grid-template-columns:2fr repeat(4,minmax(150px,1fr)) auto;margin-bottom:0">
-          <input class="search-input" id="content-search" placeholder="ค้นหาแบรนด์ ชื่อโพสต์ Caption ผู้รับผิดชอบ" oninput="renderContentSchedule()">
+          <input class="search-input" id="content-search" placeholder="ค้นหาแบรนด์ ชื่อโพสต์ Caption ช่องทาง ผู้รับผิดชอบ" oninput="renderContentSchedule()">
           <select class="filter-select" id="content-filter-brand" onchange="renderContentSchedule()"><option value="">แบรนด์ทั้งหมด</option></select>
           <select class="filter-select" id="content-filter-channel" onchange="renderContentSchedule()"><option value="">ช่องทางทั้งหมด</option>${CONTENT_CHANNELS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
           <select class="filter-select" id="content-filter-status" onchange="renderContentSchedule()"><option value="">สถานะทั้งหมด</option>${CONTENT_STATUSES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
@@ -728,7 +756,7 @@ function ensureContentScheduleUI(){
       <div class="modal-body">
         <div class="field"><label>วันที่ลง</label><input id="content-post-date" type="date"></div>
         <div class="field"><label>แบรนด์</label><select id="content-brand"></select></div>
-        <div class="field"><label>ช่องทาง</label><select id="content-channel">${CONTENT_CHANNELS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
+        <div class="field full"><label>ช่องทางที่จะลงโพสต์</label><div class="field-hint">เลือกได้หลายช่องทางใน 1 โพสต์ เช่น Facebook + Instagram + TikTok เพื่อไม่ต้องสร้างรายการซ้ำ</div><div id="content-channel-grid" class="content-channel-picker"></div></div>
         <div class="field"><label>ประเภทคอนเทนต์</label><select id="content-type">${CONTENT_TYPES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
         <div class="field full"><label>ชื่อโพสต์ / หัวข้อ</label><input id="content-title" type="text" placeholder="เช่น HOB Serum Benefits"></div>
         <div class="field full"><label>ลิงก์รูป / ไฟล์คอนเทนต์</label><input id="content-asset-link" type="url" placeholder="วางลิงก์ Google Drive / Canva / Meta / รูปภาพ"></div>
@@ -752,8 +780,8 @@ function filteredContentSchedule(){
   const s=document.getElementById('content-filter-status')?.value||'';
   const m=document.getElementById('content-filter-month')?.value||'';
   return contentSchedule.map(normalizeContentRecord).filter(x=>{
-    const hay=[x.postDate,x.brand,x.channel,x.contentType,x.title,x.assetLink,x.caption,x.status,x.assignee,x.note].join(' ').toLowerCase();
-    return (!q||hay.includes(q))&&(!b||x.brand===b)&&(!c||x.channel===c)&&(!s||x.status===s)&&(!m||String(x.postDate||'').startsWith(m));
+    const hay=[x.postDate,x.brand,...contentChannelLabels(x.channels),x.contentType,x.title,x.assetLink,x.caption,x.status,x.assignee,x.note].join(' ').toLowerCase();
+    return (!q||hay.includes(q))&&(!b||x.brand===b)&&(!c||normalizeContentChannels(x).includes(c))&&(!s||x.status===s)&&(!m||String(x.postDate||'').startsWith(m));
   });
 }
 function renderContentSummary(){
@@ -773,7 +801,7 @@ function renderContentSchedule(){
   const list=filteredContentSchedule().sort((a,b)=>String(a.postDate||'9999').localeCompare(String(b.postDate||'9999')) || String(a.brand||'').localeCompare(String(b.brand||'')));
   el.innerHTML=list.length?list.map(contentRow).join(''):`<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:34px">ยังไม่มีรายการ Content Schedule</td></tr>`;
 }
-function contentRow(x){x=normalizeContentRecord(x);const link=x.assetLink?`<a class="content-link" href="${esc(x.assetLink)}" target="_blank" rel="noopener"><i class="ti ti-link"></i> เปิดไฟล์</a>`:'-';return `<tr><td>${fmtDate(x.postDate)}</td><td><strong>${esc(x.brand||'-')}</strong></td><td>${esc(contentLabel(CONTENT_CHANNELS,x.channel))}</td><td>${esc(contentLabel(CONTENT_TYPES,x.contentType))}</td><td>${esc(x.title||'-')}</td><td>${link}</td><td class="content-caption-cell" title="${esc(x.caption)}">${esc(x.caption||'-')}</td><td>${contentStatusBadge(x.status)}</td><td>${esc(x.assignee||'-')}</td><td class="content-caption-cell" title="${esc(x.note)}">${esc(x.note||'-')}</td><td><div class="content-actions"><button class="icon-btn" title="แก้ไข" onclick="openContentModal(${Number(x.id)})"><i class="ti ti-edit"></i></button>${canDeleteContentSchedule()?`<button class="icon-btn" title="ลบ" onclick="deleteContentRecord(${Number(x.id)})"><i class="ti ti-trash"></i></button>`:''}</div></td></tr>`;}
+function contentRow(x){x=normalizeContentRecord(x);const link=x.assetLink?`<a class="content-link" href="${esc(x.assetLink)}" target="_blank" rel="noopener"><i class="ti ti-link"></i> เปิดไฟล์</a>`:'-';return `<tr><td>${fmtDate(x.postDate)}</td><td><strong>${esc(x.brand||'-')}</strong></td><td>${contentChannelChips(x.channels)}</td><td>${esc(contentLabel(CONTENT_TYPES,x.contentType))}</td><td>${esc(x.title||'-')}</td><td>${link}</td><td class="content-caption-cell" title="${esc(x.caption)}">${esc(x.caption||'-')}</td><td>${contentStatusBadge(x.status)}</td><td>${esc(x.assignee||'-')}</td><td class="content-caption-cell" title="${esc(x.note)}">${esc(x.note||'-')}</td><td><div class="content-actions"><button class="icon-btn" title="แก้ไข" onclick="openContentModal(${Number(x.id)})"><i class="ti ti-edit"></i></button>${canDeleteContentSchedule()?`<button class="icon-btn" title="ลบ" onclick="deleteContentRecord(${Number(x.id)})"><i class="ti ti-trash"></i></button>`:''}</div></td></tr>`;}
 function populateContentSelects(){
   const b=document.getElementById('content-brand'); if(b){b.innerHTML='<option value="">-- เลือกแบรนด์ --</option>'+brands.map(x=>`<option value="${esc(brandName(x))}">${esc(brandName(x))}</option>`).join('');}
   const a=document.getElementById('content-assignee'); if(a){const names=contentTeamNames();a.innerHTML='<option value="">-- เลือก --</option>'+names.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');}
@@ -783,7 +811,7 @@ function openContentModal(id=null){
   ensureContentScheduleUI(); editingContentId=id; populateContentSelects();
   const r=id?normalizeContentRecord(contentSchedule.find(x=>Number(x.id)===Number(id))||{}):null;
   document.getElementById('content-modal-title').textContent=id?'แก้ไขคอนเทนต์':'เพิ่มคอนเทนต์';
-  setVal('content-post-date',r?.postDate||today()); setVal('content-brand',r?.brand||''); setVal('content-channel',r?.channel||'facebook'); setVal('content-type',r?.contentType||'image'); setVal('content-title',r?.title||''); setVal('content-asset-link',r?.assetLink||''); setVal('content-caption',r?.caption||''); setVal('content-status',r?.status||'draft'); setVal('content-assignee',r?.assignee||currentActorName()); setVal('content-note',r?.note||'');
+  setVal('content-post-date',r?.postDate||today()); setVal('content-brand',r?.brand||''); renderContentChannelGrid(r?.channels||['facebook']); setVal('content-type',r?.contentType||'image'); setVal('content-title',r?.title||''); setVal('content-asset-link',r?.assetLink||''); setVal('content-caption',r?.caption||''); setVal('content-status',r?.status||'draft'); setVal('content-assignee',r?.assignee||currentActorName()); setVal('content-note',r?.note||'');
   document.getElementById('content-modal').classList.add('open'); setTimeout(()=>document.getElementById('content-title')?.focus(),80);
 }
 function closeContentModal(){document.getElementById('content-modal')?.classList.remove('open');}
@@ -792,8 +820,10 @@ async function saveContentRecord(){
   const brand=val('content-brand'); const title=val('content-title').trim();
   if(!brand){toast('กรุณาเลือกแบรนด์');return;} if(!title){toast('กรุณาใส่ชื่อโพสต์ / หัวข้อ');return;}
   let link=val('content-asset-link').trim(); if(link&&!/^https?:\/\//i.test(link))link='https://'+link;
+  const channels=readContentChannelGrid();
+  if(!channels.length){toast('กรุณาเลือกช่องทางอย่างน้อย 1 ช่องทาง');return;}
   const old=contentSchedule.find(x=>Number(x.id)===Number(editingContentId));
-  const rec=normalizeContentRecord({id:editingContentId||Date.now(),postDate:val('content-post-date')||today(),brand,channel:val('content-channel'),contentType:val('content-type'),title,assetLink:link,caption:val('content-caption').trim(),status:val('content-status'),assignee:val('content-assignee')||currentActorName(),note:val('content-note').trim(),createdAt:old?.createdAt,updatedAt:new Date().toISOString()});
+  const rec=normalizeContentRecord({id:editingContentId||Date.now(),postDate:val('content-post-date')||today(),brand,channels,contentType:val('content-type'),title,assetLink:link,caption:val('content-caption').trim(),status:val('content-status'),assignee:val('content-assignee')||currentActorName(),note:val('content-note').trim(),createdAt:old?.createdAt,updatedAt:new Date().toISOString()});
   if(editingContentId)contentSchedule=contentSchedule.map(x=>Number(x.id)===Number(editingContentId)?rec:x);else contentSchedule.unshift(rec);
   closeContentModal(); await persistData(); renderContentSchedule();
 }
@@ -825,7 +855,7 @@ updateAccessUI = function(){
 };
 const __oldBindActionButtonsContent = bindActionButtons;
 bindActionButtons = function(){__oldBindActionButtonsContent();const btn=document.getElementById('content-add-button');if(btn){btn.type='button';btn.onclick=(e)=>{e.preventDefault();openContentModal();return false;};}};
-window.renderContentSchedule=renderContentSchedule;window.openContentModal=openContentModal;window.closeContentModal=closeContentModal;window.saveContentRecord=saveContentRecord;window.deleteContentRecord=deleteContentRecord;window.clearContentFilters=clearContentFilters;window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=updateAccessUI;
+window.renderContentSchedule=renderContentSchedule;window.renderContentChannelGrid=renderContentChannelGrid;window.openContentModal=openContentModal;window.closeContentModal=closeContentModal;window.saveContentRecord=saveContentRecord;window.deleteContentRecord=deleteContentRecord;window.clearContentFilters=clearContentFilters;window.showView=showView;window.renderAll=renderAll;window.updateAccessUI=updateAccessUI;
 ensureContentScheduleUI();
 /* ================= End Content Schedule Patch ================= */
 
