@@ -1002,4 +1002,107 @@ renderAll = function(){__oldRenderAllSticky();safeRun('sticky-scrollbar',refresh
 window.showView=showView;window.renderAll=renderAll;window.refreshWideTableScrollbars=refreshWideTableScrollbars;
 /* ================= End sticky horizontal scrollbar patch ================= */
 
+
+/* ================= Brand management reliability patch ================= */
+const __brandFixAllAppDataForSave = function(){
+  const payload={brands,team,tasks,financial,tracking,updatedAt:serverTimestamp()};
+  try{if(typeof leads!=='undefined')payload.leads=leads;}catch(e){}
+  try{if(typeof contentSchedule!=='undefined')payload.contentSchedule=contentSchedule;}catch(e){}
+  return payload;
+};
+persistData = async function(){
+  isSaving=true;
+  try{
+    if(docRef){await setDoc(docRef,__brandFixAllAppDataForSave());setStatus(true);}
+    toast('บันทึกแล้ว');
+  }catch(e){console.error('persistData error',e);toast('บันทึกไม่สำเร็จ');setStatus(false);}finally{setTimeout(()=>{isSaving=false},250);}
+};
+const __brandFixArg = name => encodeURIComponent(String(name||''));
+const __brandFixButton = (action,name,label,icon='ti-edit',extra='') => `<button class="btn small ${extra}" type="button" data-brand-action="${esc(action)}" data-brand-name="${__brandFixArg(name)}"><i class="ti ${esc(icon)}"></i>${esc(label)}</button>`;
+const __brandFixInlineEditButton = (name,label='แก้ไขข้อมูลแบรนด์') => `<button class="btn small" type="button" data-brand-action="edit" data-brand-name="${__brandFixArg(name)}"><i class="ti ti-edit"></i>${esc(label)}</button>`;
+renderBrands = function(){
+  const el=document.getElementById('brand-grid');if(!el)return;
+  el.innerHTML=brands.length?brands.map(b=>{
+    const name=brandName(b);const links=brandInfoLinks(b);const images=brandImageLinks(b);
+    return `<div class="brand-card">${brandVisualHtml(b)}<div class="brand-title">${esc(name)}</div><div class="brand-sub">${esc(brandProduct(b)||'ยังไม่ระบุสินค้า')}<br>ลูกค้า: ${esc(brandCustomer(b)||'-')}<br>${esc(brandPackage(b)||'ยังไม่ระบุ Package')} • สัญญา ${brandContractMonths(b)} เดือน</div><div class="brand-sub">${links.length} ลิงก์ข้อมูล • ${images.length} รูปสินค้า/โลโก้</div><div class="card-actions">${canManageAll()?`${__brandFixButton('edit',name,'แก้ไข','ti-edit')}${__brandFixButton('delete',name,'ลบ','ti-trash','danger')}`:''}</div></div>`;
+  }).join(''):'<div class="no-tasks" style="grid-column:1/-1">ยังไม่มีแบรนด์</div>';
+};
+renderBrandInfo = function(){
+  const el=document.getElementById('brand-info-grid');if(!el)return;
+  el.innerHTML=brands.length?brands.map(b=>{
+    const name=brandName(b);const links=brandInfoLinks(b);const images=brandImageLinks(b);const logo=brandLogoUrl(b);
+    return `<div class="brand-card">${brandVisualHtml(b)}<div class="brand-title">${esc(name)}</div><div class="brand-sub">${esc(brandPackage(b)||'ยังไม่ระบุ Package')} • สัญญา ${brandContractMonths(b)} เดือน</div><div class="section-lbl" style="margin-top:12px">Logo / รูปหลัก</div>${logo?fileListHtml([fileObj('เปิด Logo / รูปหลัก',logo)],''): '<div class="field-hint">ยังไม่มี Logo / รูปหลัก</div>'}<div class="section-lbl" style="margin-top:12px">รูปสินค้า / รูปประกอบ</div>${imageGalleryHtml(images)}<div class="section-lbl" style="margin-top:12px">ลิงก์ข้อมูลสำหรับกราฟิก</div>${links.length?fileListHtml(links,''): '<div class="field-hint">ยังไม่มีลิงก์ข้อมูลแบรนด์</div>'}${canManageAll()?`<div class="card-actions" style="margin-top:14px">${__brandFixInlineEditButton(name)}</div>`:''}</div>`;
+  }).join(''):'<div class="no-tasks" style="grid-column:1/-1">ยังไม่มีแบรนด์</div>';
+};
+const __brandFixBindCardActions = function(){
+  if(document.body.dataset.brandDelegationBound==='1')return;
+  document.body.dataset.brandDelegationBound='1';
+  document.body.addEventListener('click',ev=>{
+    const btn=ev.target?.closest?.('[data-brand-action]');
+    if(!btn)return;
+    ev.preventDefault();ev.stopPropagation();
+    const name=decodeURIComponent(btn.getAttribute('data-brand-name')||'');
+    const action=btn.getAttribute('data-brand-action');
+    try{if(action==='edit')openBrandModal(name);if(action==='delete')removeBrand(name);}catch(e){console.error('brand action failed',e);toast('เกิดข้อผิดพลาดในการจัดการแบรนด์');}
+  },true);
+};
+const __brandFixSetMaybe = (id,value)=>{const el=document.getElementById(id);if(el)el.value=value??'';};
+openBrandModal = function(name=null){
+  if(!canManageAll()){toast('เฉพาะ Owner / Manager เท่านั้นที่จัดการแบรนด์ได้');return;}
+  try{
+    editingBrandName=name;
+    const b=name?brandByName(name):null;
+    tempBrandInfoLinks=b?brandInfoLinks(b):[];
+    tempBrandImages=b?brandImageLinks(b):[];
+    const title=document.getElementById('brand-modal-title'); if(title)title.textContent=name?'แก้ไขแบรนด์':'เพิ่มแบรนด์';
+    __brandFixSetMaybe('brand-name',name||'');__brandFixSetMaybe('brand-customer',b?brandCustomer(b):'');__brandFixSetMaybe('brand-product',b?brandProduct(b):'');__brandFixSetMaybe('brand-package',b?brandPackage(b):'');__brandFixSetMaybe('brand-package-amount',b?(brandPackageAmount(b)||''):'');__brandFixSetMaybe('brand-content-total',b?brandContentTotal(b):'');__brandFixSetMaybe('brand-image-count',b?(brandImageCount(b)||''):'');__brandFixSetMaybe('brand-video-count',b?(brandVideoCount(b)||''):'');
+    const contract=document.getElementById('brand-contract');if(contract){contract.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1} เดือน</option>`).join('');contract.value=b?String(brandContractMonths(b)):'1';}
+    const logo=document.getElementById('brand-logo-url'); if(logo)logo.value=b?brandLogoUrl(b):'';
+    renderChannelGrid('brand-channel-grid',b?brandChannels(b):channelDefaults(),'brand-channel');
+    __brandFixSetMaybe('brand-info-link-name','');__brandFixSetMaybe('brand-info-link-url','');__brandFixSetMaybe('brand-image-link-name','');__brandFixSetMaybe('brand-image-link-url','');
+    renderLogoPreview();renderBrandInfoLinkList();renderBrandImageLinkList();
+    const modal=document.getElementById('brand-modal');if(modal)modal.classList.add('open');
+    setTimeout(()=>document.getElementById('brand-name')?.focus(),80);
+  }catch(e){console.error('openBrandModal error',e);toast('เปิดหน้าต่างแบรนด์ไม่สำเร็จ กรุณารีเฟรชหน้า');}
+};
+saveBrand = async function(){
+  if(!canManageAll()){toast('เฉพาะ Owner / Manager เท่านั้นที่บันทึกแบรนด์ได้');return;}
+  try{
+    const name=String(document.getElementById('brand-name')?.value||'').trim();
+    const customer=String(document.getElementById('brand-customer')?.value||'').trim();
+    const product=String(document.getElementById('brand-product')?.value||'').trim();
+    const packageName=String(document.getElementById('brand-package')?.value||'').trim();
+    const packageAmount=Number(document.getElementById('brand-package-amount')?.value)||0;
+    const contentTotal=String(document.getElementById('brand-content-total')?.value||'').trim();
+    const imageCount=Number(document.getElementById('brand-image-count')?.value)||0;
+    const videoCount=Number(document.getElementById('brand-video-count')?.value)||0;
+    const channels=readChannelGrid('brand-channel-grid','brand-channel');
+    const contractMonths=Number(document.getElementById('brand-contract')?.value)||1;
+    let logoUrl=String(document.getElementById('brand-logo-url')?.value||'').trim();if(logoUrl&&!/^https?:\/\//i.test(logoUrl))logoUrl='https://'+logoUrl;
+    if(!name){toast('กรุณาใส่ชื่อแบรนด์');return;}
+    if(name!==editingBrandName&&brands.some(b=>brandName(b)===name)){toast('มีแบรนด์นี้แล้ว');return;}
+    const oldName=editingBrandName;
+    const nextBrand=brandObj(name,packageName,contractMonths,tempBrandInfoLinks,logoUrl,tempBrandImages,{customer,product,packageAmount,contentTotal,imageCount,videoCount,channels});
+    if(oldName){brands=brands.map(b=>brandName(b)===oldName?nextBrand:b);}else{brands.push(nextBrand);}
+    if(oldName&&oldName!==name){
+      const historyText=`แบรนด์: ${oldName} → ${name}`;
+      tasks=tasks.map(t=>t.brand===oldName?{...t,brand:name,history:[{at:new Date().toISOString(),by:currentActorName(),text:historyText},...(t.history||[])]}:t);
+      financial=financial.map(f=>f.brand===oldName?{...f,brand:name}:f);
+      tracking=tracking.map(r=>r.brand===oldName?{...r,brand:name}:r);
+      try{contentSchedule=contentSchedule.map(c=>c.brand===oldName?{...c,brand:name}:c);}catch(e){}
+    }
+    closeBrandModal();await persistData();renderAll();toast(oldName?'แก้ไขแบรนด์แล้ว':'เพิ่มแบรนด์แล้ว');
+  }catch(e){console.error('saveBrand error',e);toast('บันทึกแบรนด์ไม่สำเร็จ กรุณาตรวจข้อมูลแล้วลองใหม่');}
+};
+const __oldBindActionButtonsBrandFix = bindActionButtons;
+bindActionButtons = function(){
+  __oldBindActionButtonsBrandFix();__brandFixBindCardActions();
+  const brandSave=document.querySelector('#brand-modal .modal-foot .btn.primary');if(brandSave){brandSave.type='button';brandSave.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();saveBrand();return false;};}
+  const brandCancel=document.querySelector('#brand-modal .modal-foot .btn:not(.primary)');if(brandCancel){brandCancel.type='button';brandCancel.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();closeBrandModal();return false;};}
+};
+const __oldRenderAllBrandFix = renderAll;
+renderAll = function(){__oldRenderAllBrandFix();safeRun('brand-management-fix',()=>{__brandFixBindCardActions();bindActionButtons();});};
+window.openBrandModal=openBrandModal;window.saveBrand=saveBrand;window.renderBrands=renderBrands;window.renderBrandInfo=renderBrandInfo;window.renderAll=renderAll;window.persistData=persistData;
+/* ================= End brand management reliability patch ================= */
+
 init();
