@@ -100,13 +100,14 @@ button,input,select,textarea{font-family:var(--font)}
 .channel-dot.off{background:#eef2f6;color:#98a2b3}
 .master-note{padding:10px 12px;border-radius:12px;background:#f8fafc;border:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.5}
 
-/* Easy horizontal scrolling for wide tables */
-.table-scroll-top{overflow-x:auto;overflow-y:hidden;height:18px;margin:0 0 8px 0;border:1px solid var(--line);border-radius:999px;background:#f8fafc;-webkit-overflow-scrolling:touch;}
-.table-scroll-top-inner{height:1px;}
-.table-scroll-top::-webkit-scrollbar{height:10px}.table-scroll-top::-webkit-scrollbar-track{background:#eef2f7;border-radius:999px}.table-scroll-top::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}.table-scroll-top::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+/* Sticky horizontal scrollbar for wide tables */
 .finance-table-wrap,.tracking-table-wrap,.crm-table-wrap{scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#94a3b8 #eef2f7;}
 .finance-table-wrap::-webkit-scrollbar,.tracking-table-wrap::-webkit-scrollbar,.crm-table-wrap::-webkit-scrollbar{height:12px}.finance-table-wrap::-webkit-scrollbar-track,.tracking-table-wrap::-webkit-scrollbar-track,.crm-table-wrap::-webkit-scrollbar-track{background:#eef2f7}.finance-table-wrap::-webkit-scrollbar-thumb,.tracking-table-wrap::-webkit-scrollbar-thumb,.crm-table-wrap::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}
-@media(max-width:900px){.table-scroll-top{height:22px}.table-scroll-top::-webkit-scrollbar{height:12px}}
+.sticky-h-scroll{position:fixed;left:281px;right:26px;bottom:14px;height:22px;overflow-x:auto;overflow-y:hidden;z-index:1200;background:rgba(255,255,255,.96);border:1px solid var(--line2);border-radius:999px;box-shadow:0 12px 32px rgba(15,23,42,.16);padding:3px 8px;display:none;-webkit-overflow-scrolling:touch;backdrop-filter:blur(12px)}
+.sticky-h-scroll-inner{height:1px;}
+.sticky-h-scroll::-webkit-scrollbar{height:12px}.sticky-h-scroll::-webkit-scrollbar-track{background:#eef2f7;border-radius:999px}.sticky-h-scroll::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:999px}.sticky-h-scroll::-webkit-scrollbar-thumb:hover{background:#64748b}
+.sticky-scroll-spacer{height:36px;display:none}.has-sticky-scroll .sticky-scroll-spacer{display:block}
+@media(max-width:900px){.sticky-h-scroll{left:12px;right:12px;bottom:10px;height:26px}.sticky-h-scroll::-webkit-scrollbar{height:14px}}
 
 </style>
 </head>
@@ -419,31 +420,61 @@ function renderTasks(){const el=document.getElementById('task-list');if(!el)retu
 function sortTasks(a,b){const pr={high:0,medium:1,normal:2,low:3};return (a.status==='done')-(b.status==='done') || (pr[a.priority]??2)-(pr[b.priority]??2) || String(a.deadline||'9999').localeCompare(String(b.deadline||'9999'));}
 
 
-function setupWideTableScrollbars(){
-  const selectors=['.finance-table-wrap','.tracking-table-wrap','.crm-table-wrap'];
-  selectors.forEach(sel=>{
-    const wrap=document.querySelector(sel);
-    if(!wrap||!wrap.parentNode)return;
-    let top=wrap.previousElementSibling;
-    if(!top||!top.classList||!top.classList.contains('table-scroll-top')){
-      top=document.createElement('div');
-      top.className='table-scroll-top';
-      top.innerHTML='<div class="table-scroll-top-inner"></div>';
-      wrap.parentNode.insertBefore(top,wrap);
-      let syncing=false;
-      top.addEventListener('scroll',()=>{if(syncing)return;syncing=true;wrap.scrollLeft=top.scrollLeft;syncing=false;},{passive:true});
-      wrap.addEventListener('scroll',()=>{if(syncing)return;syncing=true;top.scrollLeft=wrap.scrollLeft;syncing=false;},{passive:true});
-    }
-    const inner=top.querySelector('.table-scroll-top-inner');
-    if(inner){
-      const w=Math.max(wrap.scrollWidth,wrap.clientWidth);
-      inner.style.width=w+'px';
-    }
-    top.style.display=wrap.scrollWidth>wrap.clientWidth+4?'block':'none';
-  });
+let stickyScrollSyncing=false;
+function getActiveWideTableWrap(){
+  const view=document.querySelector('.view.active');
+  if(!view)return null;
+  return view.querySelector('.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap');
 }
-function refreshWideTableScrollbars(){setTimeout(setupWideTableScrollbars,80);setTimeout(setupWideTableScrollbars,350);}
+function ensureStickyHorizontalScroll(){
+  let bar=document.getElementById('sticky-h-scroll');
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='sticky-h-scroll';
+    bar.className='sticky-h-scroll';
+    bar.innerHTML='<div class="sticky-h-scroll-inner"></div>';
+    document.body.appendChild(bar);
+    bar.addEventListener('scroll',()=>{
+      if(stickyScrollSyncing)return;
+      const wrap=getActiveWideTableWrap();
+      if(!wrap)return;
+      stickyScrollSyncing=true;
+      wrap.scrollLeft=bar.scrollLeft;
+      stickyScrollSyncing=false;
+    },{passive:true});
+  }
+  return bar;
+}
+function setupWideTableScrollbars(){
+  document.querySelectorAll('.table-scroll-top').forEach(el=>el.remove());
+  document.querySelectorAll('.finance-table-wrap,.tracking-table-wrap,.crm-table-wrap').forEach(w=>{if(!w.nextElementSibling||!w.nextElementSibling.classList?.contains('sticky-scroll-spacer')){const sp=document.createElement('div');sp.className='sticky-scroll-spacer';w.insertAdjacentElement('afterend',sp);}});
+  const bar=ensureStickyHorizontalScroll();
+  const inner=bar.querySelector('.sticky-h-scroll-inner');
+  const wrap=getActiveWideTableWrap();
+  document.body.classList.remove('has-sticky-scroll');
+  if(!wrap || wrap.scrollWidth<=wrap.clientWidth+4){bar.style.display='none';return;}
+  inner.style.width=wrap.scrollWidth+'px';
+  if(!wrap.dataset.stickyScrollBound){
+    wrap.dataset.stickyScrollBound='1';
+    wrap.addEventListener('scroll',()=>{
+      if(stickyScrollSyncing)return;
+      const active=getActiveWideTableWrap();
+      if(active!==wrap)return;
+      const b=ensureStickyHorizontalScroll();
+      stickyScrollSyncing=true;
+      b.scrollLeft=wrap.scrollLeft;
+      stickyScrollSyncing=false;
+    },{passive:true});
+  }
+  stickyScrollSyncing=true;
+  bar.scrollLeft=wrap.scrollLeft;
+  stickyScrollSyncing=false;
+  bar.style.display='block';
+  document.body.classList.add('has-sticky-scroll');
+}
+function refreshWideTableScrollbars(){setTimeout(setupWideTableScrollbars,80);setTimeout(setupWideTableScrollbars,350);setTimeout(setupWideTableScrollbars,900);}
 window.addEventListener('resize',refreshWideTableScrollbars);
+window.addEventListener('scroll',refreshWideTableScrollbars,{passive:true});
 
 function hasManagerAccess(){return accessRole==='manager'||accessRole==='owner';}
 function hasOwnerAccess(){return accessRole==='owner';}
