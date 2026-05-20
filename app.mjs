@@ -230,7 +230,7 @@ function openDetail(id){const t=tasks.find(x=>Number(x.id)===Number(id));if(!t)r
 async function updateTaskStatus(id){if(!canLimitedUpdate()){toast('กรุณา Login ก่อน');return;}const t=tasks.find(x=>Number(x.id)===Number(id));if(!t)return;const newStatus=document.getElementById('detail-status')?.value||t.status;if(newStatus===t.status){toast('สถานะยังเหมือนเดิม');return;}const oldLabel=SL[t.status]||t.status;const newLabel=SL[newStatus]||newStatus;t.status=newStatus;t.history=[{at:new Date().toISOString(),by:currentActorName(),text:`เปลี่ยนสถานะงาน: ${oldLabel} → ${newLabel}`},...(t.history||[])].slice(0,60);await persistData();renderAll();openDetail(id);toast('บันทึกสถานะแล้ว');}
 
 async function addTaskComment(id){if(!canLimitedUpdate()){toast('กรุณา Login ก่อน');return;}const t=tasks.find(x=>Number(x.id)===Number(id));if(!t)return;const text=document.getElementById('detail-comment')?.value.trim();if(!text){toast('กรุณาพิมพ์คอมเมนต์');return;}t.comments=[{at:new Date().toISOString(),by:currentActorName(),text},...(t.comments||[])].slice(0,80);await persistData();renderAll();openDetail(id);toast('เพิ่มคอมเมนต์แล้ว');}
-function closeDetail(e){if(!e||e.target===document.getElementById('detail-overlay'))document.getElementById('detail-overlay').classList.remove('open');}
+function closeDetail(e){document.getElementById('detail-overlay')?.classList.remove('open');}
 function fmtDateTime(x){if(!x)return'-';try{return new Date(x).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'});}catch{return x;}}
 function renderBrands(){const el=document.getElementById('brand-grid');if(!el)return;el.innerHTML=brands.length?brands.map((b,i)=>{const name=brandName(b);const pkg=brandPackage(b)||'ยังไม่ระบุ Package';const months=brandContractMonths(b);const links=brandInfoLinks(b);const images=brandImageLinks(b);return `<div class="brand-card">${brandVisualHtml(b)}<div class="brand-title">${esc(name)}</div><div class="brand-sub">${tasks.filter(t=>t.brand===name).length} งาน</div><div class="brand-meta"><span class="chip"><i class="ti ti-package"></i>${esc(pkg)}</span><span class="chip"><i class="ti ti-calendar-time"></i>สัญญา ${months} เดือน</span><span class="chip"><i class="ti ti-user"></i>${esc(brandCustomer(b)||'ไม่ระบุลูกค้า')}</span><span class="chip"><i class="ti ti-box"></i>${esc(brandProduct(b)||'ไม่ระบุสินค้า')}</span><span class="chip"><i class="ti ti-photo"></i>${(brandLogoUrl(b)?1:0)+images.length} รูป/โลโก้</span><span class="chip"><i class="ti ti-link"></i>${links.length} ลิงก์ข้อมูล</span></div><div class="card-actions"><button class="btn small" onclick="showView('brand-info')"><i class="ti ti-photo-share"></i>ดูข้อมูล</button>${canManageAll()?`<button class="btn small" onclick='openBrandModal(${JSON.stringify(name)})'><i class="ti ti-edit"></i>แก้ไข</button><button class="btn small danger" onclick='removeBrand(${JSON.stringify(name)})'><i class="ti ti-trash"></i>ลบ</button>`:''}</div></div>`}).join(''):'<div class="no-tasks" style="grid-column:1/-1">ยังไม่มีแบรนด์</div>';}
 function renderBrandInfo(){const el=document.getElementById('brand-info-grid');if(!el)return;el.innerHTML=brands.length?brands.map(b=>{const name=brandName(b);const links=brandInfoLinks(b);const images=brandImageLinks(b);const logo=brandLogoUrl(b);return `<div class="brand-card">${brandVisualHtml(b)}<div class="brand-title">${esc(name)}</div><div class="brand-sub">${esc(brandPackage(b)||'ยังไม่ระบุ Package')} • สัญญา ${brandContractMonths(b)} เดือน</div><div class="section-lbl" style="margin-top:12px">Logo / รูปหลัก</div>${logo?fileListHtml([fileObj('เปิด Logo / รูปหลัก',logo)],''): '<div class="field-hint">ยังไม่มี Logo / รูปหลัก</div>'}<div class="section-lbl" style="margin-top:12px">รูปสินค้า / รูปประกอบ</div>${imageGalleryHtml(images)}<div class="section-lbl" style="margin-top:12px">ลิงก์ข้อมูลสำหรับกราฟิก</div>${links.length?fileListHtml(links,''): '<div class="field-hint">ยังไม่มีลิงก์ข้อมูลแบรนด์</div>'}${canManageAll()?`<div class="card-actions" style="margin-top:14px"><button class="btn small" onclick='openBrandModal(${JSON.stringify(name)})'><i class="ti ti-edit"></i>แก้ไขข้อมูลแบรนด์</button></div>`:''}</div>`}).join(''):'<div class="no-tasks" style="grid-column:1/-1">ยังไม่มีแบรนด์</div>';}
@@ -275,7 +275,7 @@ function bindFilterControls(){
   if(clearBtn&&clearBtn.dataset.filterBound!=='1'){clearBtn.dataset.filterBound='1';clearBtn.addEventListener('click',clearFilters);}
 }
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open,.detail-overlay.open').forEach(x=>x.classList.remove('open'));}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){toast('กรุณากดปุ่มปิดหรือ X เพื่อปิดหน้าต่าง');}});
 // Safety fallback: rebind common buttons after every render so controls remain clickable after dynamic updates.
 function bindActionButtons(){
   const bind=(id,fn)=>{
@@ -296,6 +296,14 @@ window.renderAll=renderAll;
 bindActionButtons();
 
 
+
+
+// Prevent accidental modal closing when clicking empty backdrop space.
+// Pop-ups should close only through the X / Cancel / Close buttons.
+document.addEventListener('click',e=>{
+  const overlay=e.target?.classList?.contains('modal-overlay')||e.target?.classList?.contains('detail-overlay');
+  if(overlay){e.preventDefault();e.stopPropagation();}
+},true);
 
 // Financial modal fallback: keep totals live even when inline handlers are delayed.
 document.addEventListener('input',e=>{
@@ -473,7 +481,6 @@ function ensureCRMUI(){
   if(!document.getElementById('lead-modal')){
     const modal=document.createElement('div');
     modal.className='modal-overlay'; modal.id='lead-modal';
-    modal.setAttribute('onclick','if(event.target===this)closeLeadModal()');
     modal.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
       <div class="modal-head"><h2 id="lead-modal-title">เพิ่มลูกค้าใหม่</h2><button class="icon-btn" onclick="closeLeadModal()"><i class="ti ti-x"></i></button></div>
       <div class="modal-body">
@@ -752,7 +759,6 @@ function ensureContentScheduleUI(){
   if(!document.getElementById('content-modal')){
     const modal=document.createElement('div');
     modal.className='modal-overlay'; modal.id='content-modal';
-    modal.setAttribute('onclick','if(event.target===this)closeContentModal()');
     modal.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
       <div class="modal-head"><h2 id="content-modal-title">เพิ่มคอนเทนต์</h2><button class="icon-btn" onclick="closeContentModal()"><i class="ti ti-x"></i></button></div>
       <div class="modal-body">
