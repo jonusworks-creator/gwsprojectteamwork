@@ -1106,3 +1106,78 @@ window.openBrandModal=openBrandModal;window.saveBrand=saveBrand;window.renderBra
 /* ================= End brand management reliability patch ================= */
 
 init();
+
+/* ================= Final role-based navigation visibility patch =================
+   Requirement:
+   - Every signed-in role can view Team.
+   - Only Owner / Manager can see Dashboard, Financial, and Client Brands.
+   - Other feature tabs keep their existing role rules.
+   =============================================================== */
+canViewTeam = function(){ return Boolean(currentUser) || !CLOUD_ENABLED; };
+
+function finalAllowedDefaultView(){
+  if(hasManagerAccess()) return 'tasks';
+  if(hasContentScheduleAccess()) return 'content-schedule';
+  if(hasCRMAccess()) return 'crm';
+  return 'tasks';
+}
+
+const __finalRolePatchPreviousShowView = showView;
+showView = function(v){
+  refreshAccessFromUser();
+  if(['dashboard','financial','brands'].includes(v) && !hasManagerAccess()){
+    toast((v==='dashboard'?'Dashboard':v==='financial'?'Financial':'แบรนด์ลูกค้า')+' ดูได้เฉพาะ Owner / Manager เท่านั้น');
+    return __finalRolePatchPreviousShowView(finalAllowedDefaultView());
+  }
+  if(v==='team' && !canViewTeam()){
+    toast('กรุณา Login เพื่อดูทีมงาน');
+    return;
+  }
+  return __finalRolePatchPreviousShowView(v);
+};
+
+const __finalRolePatchPreviousUpdateAccessUI = updateAccessUI;
+updateAccessUI = function(){
+  refreshAccessFromUser();
+  __finalRolePatchPreviousUpdateAccessUI();
+
+  const setNavVisible = (view, visible) => {
+    const nav = document.querySelector(`.nav-item[data-view="${view}"]`);
+    if(nav){
+      nav.style.display = visible ? 'flex' : 'none';
+      nav.style.opacity = '1';
+      nav.title = visible ? '' : 'ดูได้เฉพาะ Owner / Manager';
+    }
+  };
+
+  // Hide sensitive tabs from every role except Owner / Manager.
+  setNavVisible('dashboard', hasManagerAccess());
+  setNavVisible('financial', hasManagerAccess());
+  setNavVisible('brands', hasManagerAccess());
+
+  // Team is visible for every signed-in role, but only Owner / Manager can edit team members.
+  setNavVisible('team', canViewTeam());
+  const teamAdd = document.getElementById('team-add-button');
+  if(teamAdd) teamAdd.style.display = canManageAll() ? 'inline-flex' : 'none';
+
+  // Keep existing Content Schedule and CRM role rules intact.
+  const contentNav = document.querySelector('.nav-item[data-view="content-schedule"]');
+  if(contentNav) contentNav.style.display = hasContentScheduleAccess() ? 'flex' : 'none';
+  const crmNav = document.querySelector('.nav-item[data-view="crm"]');
+  if(crmNav) crmNav.style.display = hasCRMAccess() ? 'flex' : 'none';
+
+  // Keep sensitive add buttons hidden for non-management roles.
+  const financeAdd = document.getElementById('finance-add-button');
+  if(financeAdd) financeAdd.style.display = hasManagerAccess() ? 'inline-flex' : 'none';
+  const brandAdd = document.getElementById('brand-add-button');
+  if(brandAdd) brandAdd.style.display = hasManagerAccess() ? 'inline-flex' : 'none';
+
+  // If the current role is sitting on a now-hidden tab, move them to the best allowed tab.
+  if(['dashboard','financial','brands'].includes(currentView) && !hasManagerAccess()){
+    showView(finalAllowedDefaultView());
+  }
+};
+
+window.showView = showView;
+window.updateAccessUI = updateAccessUI;
+/* ================= End final role-based navigation visibility patch ================= */
