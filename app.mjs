@@ -1181,3 +1181,92 @@ updateAccessUI = function(){
 window.showView = showView;
 window.updateAccessUI = updateAccessUI;
 /* ================= End final role-based navigation visibility patch ================= */
+
+/* ================= Data safety architecture patch: guarded saves, backups, audit logs =================
+   Purpose: prevent one section save from wiping another section (brands/team/tasks/financial/tracking/CRM/contentSchedule).
+   This keeps the existing UI compatible while adding a safer persistence layer around the current single-document data model.
+*/
+const SAFE_SECTIONS = ['brands','team','tasks','financial','tracking','leads','contentSchedule'];
+function __safeNow(){return new Date().toISOString();}
+function __safeCurrentActor(){
+  try{return {name:currentActorName?.()||currentUser?.displayName||currentUser?.email||'unknown',email:currentEmail?.()||currentUser?.email||'',role:accessRole||''};}
+  catch(e){return {name:currentUser?.displayName||currentUser?.email||'unknown',email:currentUser?.email||'',role:''};}
+}
+function __safeArr(v){return Array.isArray(v)?v:[];}
+function __safeSectionValue(section){
+  try{
+    if(section==='brands')return __safeArr(brands).map(normalizeBrand);
+    if(section==='team')return __safeArr(team).map(m=>({...m,email:String(m.email||'').toLowerCase().trim(),role:normalizeRole(m.role)}));
+    if(section==='tasks')return __safeArr(tasks).map(t=>({...t,brief:normLinks(t.brief),deliver:normLinks(t.deliver),history:__safeArr(t.history),comments:__safeArr(t.comments)}));
+    if(section==='financial')return __safeArr(financial).map(normalizeFinance);
+    if(section==='tracking')return __safeArr(tracking).map(normalizeTracking);
+    if(section==='leads')return __safeArr(typeof leads==='undefined'?[]:leads).map(normalizeLead);
+    if(section==='contentSchedule')return __safeArr(typeof contentSchedule==='undefined'?[]:contentSchedule).map(normalizeContentRecord);
+  }catch(e){console.warn('safe section normalize failed',section,e);}
+  return [];
+}
+function __safeBuildPayload(){
+  const payload={updatedAt:serverTimestamp(),updatedAtClient:__safeNow(),updatedBy:__safeCurrentActor()};
+  SAFE_SECTIONS.forEach(s=>{payload[s]=__safeSectionValue(s);});
+  return payload;
+}
+function __safeCountsFromData(data={}){return Object.fromEntries(SAFE_SECTIONS.map(s=>[s,__safeArr(data[s]).length]));}
+function __safeCloneSnapshot(data={}){
+  const snap={at:__safeNow(),by:__safeCurrentActor(),counts:__safeCountsFromData(data)};
+  SAFE_SECTIONS.forEach(s=>{snap[s]=clone(__safeArr(data[s]));});
+  return snap;
+}
+function __safeMergeAgainstRemote(localPayload,remoteData={}){
+  const merged={...localPayload};
+  const warnings=[];
+  SAFE_SECTIONS.forEach(section=>{
+    const remoteArr=__safeArr(remoteData[section]);
+    const localArr=__safeArr(localPayload[section]);
+    // Guard against accidental full wipe caused by stale local state or an older save function.
+    if(remoteArr.length>0 && localArr.length===0){
+      merged[section]=remoteArr;
+      warnings.push(`${section}: protected ${remoteArr.length} existing item(s)`);
+    }
+  });
+  if(warnings.length){merged.lastSaveWarnings=[{at:__safeNow(),by:__safeCurrentActor(),warnings},...__safeArr(remoteData.lastSaveWarnings)].slice(0,30);}
+  return merged;
+}
+function __safeAuditEntry(action,remoteData={},mergedPayload={}){
+  const before=__safeCountsFromData(remoteData);
+  const after=__safeCountsFromData(mergedPayload);
+  const changed=SAFE_SECTIONS.filter(s=>before[s]!==after[s]);
+  return {id:Date.now(),at:__safeNow(),by:__safeCurrentActor(),action:action||'save',before,after,changed};
+}
+async function persistDataSafe(action='save'){
+  isSaving=true;
+  try{
+    if(docRef){
+      const remoteSnap=await getDoc(docRef);
+      const remoteData=remoteSnap.exists()?remoteSnap.data():{};
+      const localPayload=__safeBuildPayload();
+      const mergedPayload=__safeMergeAgainstRemote(localPayload,remoteData);
+      const backup=__safeCloneSnapshot(remoteData);
+      const audit=__safeAuditEntry(action,remoteData,mergedPayload);
+      await setDoc(docRef,{
+        ...mergedPayload,
+        appAudit:[audit,...__safeArr(remoteData.appAudit)].slice(0,300),
+        appBackups:[backup,...__safeArr(remoteData.appBackups)].slice(0,20)
+      },{merge:true});
+      setStatus(true);
+    }
+    toast('บันทึกแล้ว');
+  }catch(e){
+    console.error('persistDataSafe error',e);
+    toast('บันทึกไม่สำเร็จ');
+    setStatus(false);
+  }finally{
+    setTimeout(()=>{isSaving=false},250);
+  }
+}
+// Final override: every existing save function that calls persistData now uses the guarded save layer.
+persistData = persistDataSafe;
+window.persistData = persistDataSafe;
+window.persistDataSafe = persistDataSafe;
+window.__safeBuildPayload = __safeBuildPayload;
+window.__safeCountsFromData = __safeCountsFromData;
+/* ================= End data safety architecture patch ================= */
