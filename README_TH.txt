@@ -118,3 +118,36 @@ Firestore Rules ที่แนะนำอยู่ในไฟล์ firebase-
 - ในหน้าต่างเพิ่มคอนเทนต์ สามารถกด "เพิ่มโพสต์เข้าลิสต์" เพื่อเพิ่มหลายโพสต์ของแบรนด์/วันเดียวกันได้
 - แต่ละโพสต์ยังเลือกช่องทางได้หลายช่องทาง เช่น Facebook + Instagram + TikTok
 - กดบันทึกครั้งเดียว ระบบจะบันทึกโพสต์ทั้งหมดในลิสต์ พร้อมโพสต์ที่กรอกอยู่ปัจจุบัน
+
+=== อัปเดตระยะยาว: Long-term Data Protection ===
+
+เวอร์ชันนี้เปลี่ยนโครงสร้างการบันทึกข้อมูลระยะยาวเพื่อลดความเสี่ยงข้อมูลหายจากการเขียนทับ document ก้อนเดียว
+
+โครงสร้างใหม่ใน Firestore:
+- dashboards/growth-syndicate-main : เก็บ metadata, จำนวนรายการ, audit รวม
+- dashboards/growth-syndicate-main/sections/brands : ข้อมูลแบรนด์ลูกค้า
+- dashboards/growth-syndicate-main/sections/team : ข้อมูลทีมงาน
+- dashboards/growth-syndicate-main/sections/tasks : ข้อมูลงานทั้งหมด
+- dashboards/growth-syndicate-main/sections/financial : ข้อมูล Financial
+- dashboards/growth-syndicate-main/sections/tracking : ข้อมูล Project Tracking
+- dashboards/growth-syndicate-main/sections/leads : ข้อมูล CRM / Leads
+- dashboards/growth-syndicate-main/sections/contentSchedule : ข้อมูล Content Schedule
+
+ระบบจะ migrate ข้อมูลจาก document หลักไปยัง sections ให้อัตโนมัติเมื่อเปิดเว็บหลังอัปเดต ถ้า section ไหนมีข้อมูลเดิมอยู่ ระบบจะไม่เขียนทับเป็นว่างโดยไม่ตั้งใจ
+
+ระบบป้องกันที่เพิ่ม:
+- แต่ละแถบบันทึกแยก section document ไม่เขียนทับกันทั้งระบบ
+- ก่อนบันทึกจะอ่านข้อมูลล่าสุดจาก Firebase ก่อนเสมอ
+- ถ้า remote มีข้อมูล แต่ข้อมูล local ว่าง ระบบจะกันไม่ให้ล้างข้อมูลเดิม
+- เก็บ backups แยกในแต่ละ section สูงสุด 30 ชุด
+- เก็บ audit log แยกในแต่ละ section สูงสุด 500 รายการ
+- เก็บ deletedItems สำหรับรายการที่ถูกลบ เพื่อใช้ตรวจสอบย้อนหลัง
+- เก็บ appAudit รวมที่ document หลัก
+- มีฟังก์ชัน exportCurrentSnapshot() สำหรับ backup JSON จาก console หากต้องการดาวน์โหลด snapshot ปัจจุบัน
+
+คำแนะนำหลังอัปเดต:
+1. อัปโหลดไฟล์เวอร์ชันนี้ทับใน GitHub/Vercel
+2. รอ Deploy เป็น Ready
+3. เปิดเว็บด้วยบัญชี Owner/Manager 1 ครั้ง เพื่อให้ระบบ migrate section documents
+4. ไปที่ Firebase > Firestore แล้วตรวจว่ามี path dashboards/growth-syndicate-main/sections/... ครบ
+5. หลังจากนั้นให้ทีมใช้งานจากเว็บเวอร์ชันใหม่เท่านั้น ไม่ควรเปิดแท็บเว็บเวอร์ชันเก่าค้างไว้

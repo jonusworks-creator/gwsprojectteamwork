@@ -1111,7 +1111,7 @@ renderAll = function(){__oldRenderAllBrandFix();safeRun('brand-management-fix',(
 window.openBrandModal=openBrandModal;window.saveBrand=saveBrand;window.renderBrands=renderBrands;window.renderBrandInfo=renderBrandInfo;window.renderAll=renderAll;window.persistData=persistData;
 /* ================= End brand management reliability patch ================= */
 
-init();
+// init moved to end after long-term data safety patches.
 
 /* ================= Final role-based navigation visibility patch =================
    Requirement:
@@ -1276,3 +1276,197 @@ window.persistDataSafe = persistDataSafe;
 window.__safeBuildPayload = __safeBuildPayload;
 window.__safeCountsFromData = __safeCountsFromData;
 /* ================= End data safety architecture patch ================= */
+
+
+/* ================= Long-term segmented Firestore architecture patch =================
+   Purpose: move every large tab into its own Firestore section document so one save cannot wipe another tab.
+   Data path:
+     dashboards/growth-syndicate-main                -> metadata, counts, app-level audit only
+     dashboards/growth-syndicate-main/sections/<key> -> {items: [...], backups: [...], audit: [...], deletedItems: [...]}
+   Sections covered: brands, team, tasks, financial, tracking, leads, contentSchedule.
+*/
+const SEGMENTED_DATA_ENABLED = true;
+let __segmentRefreshTimer = null;
+let __segmentRemoteCache = {};
+let __segmentMainCache = {};
+function __segmentRef(section){return doc(db, ...FIRESTORE_DOC_PATH, 'sections', section);}
+function __segmentItemKey(item){
+  if(item && item.id!==undefined && item.id!==null && item.id!=='') return 'id:'+String(item.id);
+  if(item && item.name) return 'name:'+String(item.name);
+  if(item && item.brand && item.date) return 'branddate:'+String(item.brand)+'|'+String(item.date)+'|'+String(item.installment||'');
+  try{return JSON.stringify(item).slice(0,240);}catch(e){return String(item);}
+}
+function __segmentNormalize(section,items){
+  const arr=__safeArr(items);
+  try{
+    if(section==='brands')return arr.map(normalizeBrand).filter(x=>x.name);
+    if(section==='team')return arr.map(m=>({...m,email:String(m.email||'').toLowerCase().trim(),role:normalizeRole(m.role)}));
+    if(section==='tasks')return arr.map(t=>({...t,brief:normLinks(t.brief),deliver:normLinks(t.deliver),history:__safeArr(t.history),comments:__safeArr(t.comments)}));
+    if(section==='financial')return arr.map(normalizeFinance);
+    if(section==='tracking')return arr.map(normalizeTracking);
+    if(section==='leads')return arr.map(normalizeLead);
+    if(section==='contentSchedule')return arr.map(normalizeContentRecord);
+  }catch(e){console.warn('segment normalize failed',section,e);}
+  return arr;
+}
+async function __segmentReadAll(){
+  const mainSnap = await getDoc(docRef);
+  const mainData = mainSnap.exists()?mainSnap.data():{};
+  __segmentMainCache = mainData || {};
+  const sectionSnaps = await Promise.all(SAFE_SECTIONS.map(async section=>{
+    try{return [section, await getDoc(__segmentRef(section))];}
+    catch(e){console.warn('read section failed',section,e);return [section,null];}
+  }));
+  const combined = {...mainData};
+  __segmentRemoteCache = {};
+  for(const [section,snap] of sectionSnaps){
+    const sectionData = snap && snap.exists()?snap.data():null;
+    const mainItems = __safeArr(mainData[section]);
+    if(sectionData && Array.isArray(sectionData.items)){
+      combined[section] = __segmentNormalize(section, sectionData.items);
+      __segmentRemoteCache[section] = {...sectionData, items: combined[section]};
+    }else{
+      combined[section] = __segmentNormalize(section, mainItems);
+      __segmentRemoteCache[section] = {items: combined[section], missing:true};
+      if(mainItems.length>0){
+        try{
+          await setDoc(__segmentRef(section),{
+            items: combined[section],
+            migratedFromMain: true,
+            migratedAt: serverTimestamp(),
+            migratedAtClient: __safeNow(),
+            updatedAt: serverTimestamp(),
+            updatedAtClient: __safeNow(),
+            updatedBy: __safeCurrentActor(),
+            itemCount: combined[section].length,
+            backups: [],
+            audit: [{id:Date.now(),at:__safeNow(),by:__safeCurrentActor(),action:'migrate-from-main',beforeCount:0,afterCount:combined[section].length}],
+            deletedItems: []
+          },{merge:true});
+        }catch(e){console.warn('section migration failed',section,e);}
+      }
+    }
+  }
+  return combined;
+}
+async function __segmentRefreshData(){
+  if(isSaving || !docRef || !db) return;
+  try{
+    const combined = await __segmentReadAll();
+    normalizeData(combined);
+    refreshAccessFromUser();
+    setStatus(true);
+    renderAll();
+  }catch(e){console.error('segmented refresh failed',e);setStatus(false);toast('โหลดข้อมูลแยกส่วนไม่สำเร็จ');}
+}
+function __segmentScheduleRefresh(){
+  clearTimeout(__segmentRefreshTimer);
+  __segmentRefreshTimer = setTimeout(()=>__segmentRefreshData(),120);
+}
+async function __segmentedStartDataSync(){
+  if(unsubscribe) return;
+  try{
+    db=getFirestore(firebaseApp);
+    docRef=doc(db,...FIRESTORE_DOC_PATH);
+    const mainSnap=await getDoc(docRef);
+    if(!mainSnap.exists()){
+      await setDoc(docRef,{schemaVersion:2,segmentedData:true,sectionCounts:{},createdAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+    }
+    await __segmentRefreshData();
+    const unsubs=[];
+    unsubs.push(onSnapshot(docRef,()=>__segmentScheduleRefresh(),err=>{console.error(err);setStatus(false);toast('เชื่อม Firebase ไม่สำเร็จ');}));
+    SAFE_SECTIONS.forEach(section=>{
+      unsubs.push(onSnapshot(__segmentRef(section),()=>__segmentScheduleRefresh(),err=>{console.error('section listener error',section,err);}));
+    });
+    unsubscribe=()=>{unsubs.forEach(fn=>{try{fn();}catch(e){}});};
+  }catch(e){console.error(e);setStatus(false);toast('เชื่อม Firebase ไม่สำเร็จ');}
+}
+function __segmentedStopDataSync(){
+  if(unsubscribe){unsubscribe();unsubscribe=null;}
+  db=null;docRef=null;accessRole='graphic';__segmentRemoteCache={};__segmentMainCache={};
+}
+function __segmentRemovedItems(beforeItems,afterItems){
+  const afterKeys = new Set(__safeArr(afterItems).map(__segmentItemKey));
+  return __safeArr(beforeItems).filter(item=>!afterKeys.has(__segmentItemKey(item))).map(item=>({item,deletedAt:__safeNow(),deletedBy:__safeCurrentActor()}));
+}
+async function __segmentedPersistData(action='save'){
+  isSaving=true;
+  try{
+    if(docRef){
+      const remoteMainSnap = await getDoc(docRef);
+      const remoteMain = remoteMainSnap.exists()?remoteMainSnap.data():{};
+      const actor = __safeCurrentActor();
+      const rootBeforeCounts = {};
+      const rootAfterCounts = {};
+      const changedSections = [];
+      const warnings = [];
+      for(const section of SAFE_SECTIONS){
+        const ref = __segmentRef(section);
+        const snap = await getDoc(ref);
+        const remoteSection = snap.exists()?snap.data():null;
+        const fallbackRemoteItems = __safeArr(remoteMain[section]);
+        const remoteItems = __segmentNormalize(section, remoteSection && Array.isArray(remoteSection.items) ? remoteSection.items : fallbackRemoteItems);
+        let localItems = __segmentNormalize(section, __safeSectionValue(section));
+        rootBeforeCounts[section] = remoteItems.length;
+        // Strong wipe protection: if local is empty but remote has data, keep remote.
+        if(remoteItems.length>0 && localItems.length===0){
+          warnings.push(`${section}: protected ${remoteItems.length} existing item(s)`);
+          localItems = remoteItems;
+        }
+        rootAfterCounts[section] = localItems.length;
+        const removed = __segmentRemovedItems(remoteItems, localItems);
+        if(rootBeforeCounts[section]!==rootAfterCounts[section] || JSON.stringify(remoteItems)!==JSON.stringify(localItems)) changedSections.push(section);
+        const sectionBackup = {at:__safeNow(),by:actor,action,items:clone(remoteItems),count:remoteItems.length};
+        const sectionAudit = {id:Date.now()+Math.floor(Math.random()*100000),at:__safeNow(),by:actor,action,beforeCount:remoteItems.length,afterCount:localItems.length,removedCount:removed.length};
+        await setDoc(ref,{
+          items: localItems,
+          itemCount: localItems.length,
+          updatedAt: serverTimestamp(),
+          updatedAtClient: __safeNow(),
+          updatedBy: actor,
+          schemaVersion: 2,
+          backups: [sectionBackup,...__safeArr(remoteSection?.backups)].slice(0,30),
+          audit: [sectionAudit,...__safeArr(remoteSection?.audit)].slice(0,500),
+          deletedItems: [...removed,...__safeArr(remoteSection?.deletedItems)].slice(0,500)
+        },{merge:true});
+      }
+      const rootAudit = {id:Date.now(),at:__safeNow(),by:actor,action,before:rootBeforeCounts,after:rootAfterCounts,changed:changedSections,warnings};
+      await setDoc(docRef,{
+        schemaVersion:2,
+        segmentedData:true,
+        sectionCounts:rootAfterCounts,
+        updatedAt:serverTimestamp(),
+        updatedAtClient:__safeNow(),
+        updatedBy:actor,
+        lastSaveWarnings:warnings.length?[{at:__safeNow(),by:actor,warnings},...__safeArr(remoteMain.lastSaveWarnings)].slice(0,30):__safeArr(remoteMain.lastSaveWarnings).slice(0,30),
+        appAudit:[rootAudit,...__safeArr(remoteMain.appAudit)].slice(0,500),
+        appBackups:[{at:__safeNow(),by:actor,counts:rootBeforeCounts},...__safeArr(remoteMain.appBackups)].slice(0,50)
+      },{merge:true});
+      setStatus(true);
+    }
+    toast('บันทึกแล้ว');
+  }catch(e){console.error('segmented persist error',e);toast('บันทึกไม่สำเร็จ');setStatus(false);}
+  finally{setTimeout(()=>{isSaving=false},350);}
+}
+async function __exportCurrentSnapshot(){
+  try{
+    const data = await __segmentReadAll();
+    const blob = new Blob([JSON.stringify({exportedAt:__safeNow(),by:__safeCurrentActor(),data},null,2)],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'growth-syndicate-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }catch(e){console.error(e);toast('Export backup ไม่สำเร็จ');}
+}
+// Override the cloud sync and save layers with the segmented architecture before init starts.
+startDataSync = __segmentedStartDataSync;
+stopDataSync = __segmentedStopDataSync;
+persistData = __segmentedPersistData;
+window.persistData = __segmentedPersistData;
+window.persistDataSafe = __segmentedPersistData;
+window.exportCurrentSnapshot = __exportCurrentSnapshot;
+window.__segmentReadAll = __segmentReadAll;
+window.__segmentRemoteCache = ()=>__segmentRemoteCache;
+/* ================= End long-term segmented Firestore architecture patch ================= */
+
+init();
