@@ -1470,3 +1470,57 @@ window.__segmentRemoteCache = ()=>__segmentRemoteCache;
 /* ================= End long-term segmented Firestore architecture patch ================= */
 
 init();
+
+/* ================= iPad touch horizontal scroll fix ================= */
+function enableTouchHorizontalScrollFix(){
+  const selectors=['.tracking-table-wrap','.finance-table-wrap','.crm-table-wrap','.content-table-wrap'];
+  selectors.forEach(sel=>{
+    document.querySelectorAll(sel).forEach(wrap=>{
+      if(wrap.dataset.touchScrollFixBound==='1')return;
+      wrap.dataset.touchScrollFixBound='1';
+      wrap.style.overflowX='auto';
+      wrap.style.webkitOverflowScrolling='touch';
+      let startX=0;
+      let startY=0;
+      let startLeft=0;
+      let dragging=false;
+      wrap.addEventListener('touchstart',(e)=>{
+        if(!e.touches||!e.touches.length)return;
+        startX=e.touches[0].clientX;
+        startY=e.touches[0].clientY;
+        startLeft=wrap.scrollLeft;
+        dragging=true;
+      },{passive:true});
+      wrap.addEventListener('touchmove',(e)=>{
+        if(!dragging||!e.touches||!e.touches.length)return;
+        const dx=e.touches[0].clientX-startX;
+        const dy=e.touches[0].clientY-startY;
+        if(Math.abs(dx)>Math.abs(dy)*0.8){
+          wrap.scrollLeft=startLeft-dx;
+          try{
+            const bar=document.getElementById('sticky-h-scroll');
+            if(bar)bar.scrollLeft=wrap.scrollLeft;
+          }catch(_e){}
+        }
+      },{passive:true});
+      wrap.addEventListener('touchend',()=>{dragging=false;},{passive:true});
+      wrap.addEventListener('touchcancel',()=>{dragging=false;},{passive:true});
+    });
+  });
+}
+const __oldRefreshWideTableScrollbarsTouchFix = typeof refreshWideTableScrollbars==='function' ? refreshWideTableScrollbars : null;
+refreshWideTableScrollbars = function(){
+  enableTouchHorizontalScrollFix();
+  if(__oldRefreshWideTableScrollbarsTouchFix)__oldRefreshWideTableScrollbarsTouchFix();
+};
+const __oldShowViewTouchFix = showView;
+showView = function(v){
+  __oldShowViewTouchFix(v);
+  setTimeout(enableTouchHorizontalScrollFix,80);
+  setTimeout(enableTouchHorizontalScrollFix,350);
+};
+window.refreshWideTableScrollbars=refreshWideTableScrollbars;
+window.showView=showView;
+setTimeout(enableTouchHorizontalScrollFix,300);
+setTimeout(enableTouchHorizontalScrollFix,1200);
+/* ================= End iPad touch horizontal scroll fix ================= */

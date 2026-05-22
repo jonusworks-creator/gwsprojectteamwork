@@ -333,3 +333,41 @@ button,input,select,textarea{font-family:var(--font)}
 
 </body>
 </html>
+
+<!-- iPad / touch horizontal scroll fix -->
+<style>
+  /* ให้ตารางกว้างเลื่อนซ้าย-ขวาด้วยนิ้วบน iPad ได้โดยตรง */
+  .finance-table-wrap,
+  .tracking-table-wrap,
+  .crm-table-wrap,
+  .content-table-wrap{
+    overflow-x:auto!important;
+    overflow-y:visible!important;
+    -webkit-overflow-scrolling:touch!important;
+    touch-action:pan-x pan-y!important;
+    overscroll-behavior-x:contain;
+  }
+  .tracking-table-wrap{
+    cursor:grab;
+  }
+  .tracking-table-wrap:active{
+    cursor:grabbing;
+  }
+  @media (hover:none), (pointer:coarse), (max-width:1180px){
+    .finance-table-wrap,
+    .tracking-table-wrap,
+    .crm-table-wrap,
+    .content-table-wrap{
+      overflow-x:auto!important;
+      scrollbar-width:auto!important;
+      -ms-overflow-style:auto!important;
+    }
+    .finance-table-wrap::-webkit-scrollbar,
+    .tracking-table-wrap::-webkit-scrollbar,
+    .crm-table-wrap::-webkit-scrollbar,
+    .content-table-wrap::-webkit-scrollbar{
+      display:block!important;
+      height:14px!important;
+    }
+  }
+</style>
