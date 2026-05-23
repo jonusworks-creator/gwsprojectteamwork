@@ -391,13 +391,31 @@ function leadObj(o={}){
   };
 }
 function normalizeLead(o){return leadObj(o||{});}
+function __leadFingerprint(o={}){
+  const l=normalizeLead(o);
+  return [l.accountName,l.phone,l.lineId,l.business,l.source,l.otherContact,l.admin,l.sales,l.serviceInterest,l.receivedDate,l.appointmentDate,l.appointmentTime,l.followupDate,l.note].map(x=>String(x||'').trim().toLowerCase()).join('|');
+}
+function __dedupeLeads(arr){
+  const out=[]; const seenId=new Set(); const seenFingerprint=new Set();
+  __safeArr(arr).map(normalizeLead).forEach(item=>{
+    const idKey=item.id!==undefined && item.id!==null && item.id!=='' ? String(item.id) : '';
+    const fp=__leadFingerprint(item);
+    if(idKey && seenId.has(idKey))return;
+    if(fp.replace(/\|/g,'').trim() && seenFingerprint.has(fp))return;
+    if(idKey)seenId.add(idKey);
+    if(fp.replace(/\|/g,'').trim())seenFingerprint.add(fp);
+    out.push(item);
+  });
+  return out;
+}
+let __leadSaveInFlight=false;
 
 const __oldNormalizeData = normalizeData;
 normalizeData = function(data){
   __oldNormalizeData(data);
   const d=data||clone(DEFAULT_DATA);
   team = team.map(m=>({...m,role:normalizeRole(m.role)}));
-  leads = (Array.isArray(d.leads)?d.leads:clone(DEFAULT_DATA.leads||[])).map(normalizeLead);
+  leads = __dedupeLeads(Array.isArray(d.leads)?d.leads:clone(DEFAULT_DATA.leads||[]));
 };
 
 persistData = async function(){
@@ -435,7 +453,7 @@ function injectCRMStyles(){
   .crm-table tr:hover td{background:#fafafa}
   .crm-status{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-weight:800;font-size:12px}
   .crm-status.new{background:#f3e8ff;color:#7e22ce}.crm-status.contacted{background:#dbeafe;color:#1d4ed8}.crm-status.appointed{background:#dcfce7;color:#15803d}.crm-status.followup{background:#fef3c7;color:#b45309}.crm-status.proposal{background:#e0f2fe;color:#0369a1}.crm-status.closed{background:#d1fae5;color:#047857}.crm-status.not_interested{background:#fee2e2;color:#b91c1c}.crm-status.paused{background:#f1f5f9;color:#475569}
-  .crm-mini-actions{display:flex;gap:6px;justify-content:flex-end}.crm-note-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+  .crm-mini-actions{display:flex;gap:6px;justify-content:flex-end}.crm-note-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis}.modal-foot .btn:disabled{opacity:.55;cursor:not-allowed}
   @media(max-width:1100px){.crm-summary{grid-template-columns:repeat(2,1fr)}}`;
   document.head.appendChild(style);
 }
@@ -552,6 +570,8 @@ function populateLeadSelects(){fillLeadSelect('lead-admin',crmTeamNames('admin')
 function openLeadModal(id=null){
   if(!hasCRMAccess()){toast('CRM ดูได้เฉพาะ Owner / Manager / Admin / Sales');return;}
   ensureCRMUI(); editingLeadId=id; populateLeadSelects();
+  const modalEl=document.getElementById('lead-modal');
+  if(modalEl)modalEl.dataset.newId = id ? '' : String(Date.now());
   const l=id?normalizeLead(leads.find(x=>Number(x.id)===Number(id))||{}):null;
   document.getElementById('lead-modal-title').textContent=id?'แก้ไขข้อมูลลูกค้า':'เพิ่มลูกค้าใหม่';
   setVal('lead-status',l?.status||'new'); setVal('lead-received-date',l?.receivedDate||today()); setVal('lead-appointment-date',l?.appointmentDate||''); setVal('lead-appointment-time',l?.appointmentTime||''); setVal('lead-followup-date',l?.followupDate||'');
@@ -560,13 +580,30 @@ function openLeadModal(id=null){
 }
 function closeLeadModal(){document.getElementById('lead-modal')?.classList.remove('open');}
 async function saveLead(){
+  if(__leadSaveInFlight){toast('กำลังบันทึกอยู่ กรุณารอสักครู่');return;}
   if(!hasCRMAccess()){toast('ไม่มีสิทธิ์บันทึก CRM');return;}
   const name=val('lead-account-name').trim();
-  if(!name){toast('กรุณาใส่ชื่อบัญชี / ชื่อลูกค้า');return;}
-  const rec=leadObj({id:editingLeadId||Date.now(),status:val('lead-status'),receivedDate:val('lead-received-date')||today(),appointmentDate:val('lead-appointment-date'),appointmentTime:val('lead-appointment-time'),followupDate:val('lead-followup-date'),accountName:name,phone:val('lead-phone').trim(),lineId:val('lead-line-id').trim(),business:val('lead-business').trim(),source:val('lead-source'),otherContact:val('lead-other-contact').trim(),admin:val('lead-admin')||currentActorName(),sales:val('lead-sales'),serviceInterest:val('lead-service-interest').trim(),note:val('lead-note').trim(),createdAt:(leads.find(x=>Number(x.id)===Number(editingLeadId))||{}).createdAt});
-  if(isSalesRole() && rec.sales && rec.sales!==currentActorName()){toast('Sales แก้ไขได้เฉพาะ Lead ของตัวเอง');return;}
-  if(editingLeadId)leads=leads.map(x=>Number(x.id)===Number(editingLeadId)?rec:x); else leads.unshift(rec);
-  await persistData(); closeLeadModal(); renderAll(); toast('บันทึกข้อมูลลูกค้าแล้ว');
+  if(!name){toast('กรุณากรอกชื่อลูกค้า');return;}
+  const saveBtn=document.getElementById('lead-save-button');
+  __leadSaveInFlight=true;
+  if(saveBtn){saveBtn.disabled=true; saveBtn.dataset.oldText=saveBtn.innerHTML; saveBtn.innerHTML='<i class="ti ti-loader"></i>กำลังบันทึก...';}
+  try{
+    const modalEl=document.getElementById('lead-modal');
+    const newId=Number(modalEl?.dataset?.newId||0);
+    const saveId=editingLeadId || newId || Date.now();
+    const oldLead=leads.find(x=>Number(x.id)===Number(saveId)) || leads.find(x=>Number(x.id)===Number(editingLeadId)) || {};
+    const rec=leadObj({id:saveId,status:val('lead-status'),receivedDate:val('lead-received-date')||today(),appointmentDate:val('lead-appointment-date'),appointmentTime:val('lead-appointment-time'),followupDate:val('lead-followup-date'),accountName:name,phone:val('lead-phone').trim(),lineId:val('lead-line-id').trim(),business:val('lead-business').trim(),source:val('lead-source'),otherContact:val('lead-other-contact').trim(),admin:val('lead-admin')||currentActorName(),sales:val('lead-sales'),serviceInterest:val('lead-service-interest').trim(),note:val('lead-note').trim(),createdAt:oldLead.createdAt,updatedAt:new Date().toISOString()});
+    if(isSalesRole() && rec.sales && rec.sales!==currentActorName()){toast('Sales แก้ไขได้เฉพาะ Lead ของตัวเอง');return;}
+    const idx=leads.findIndex(x=>Number(x.id)===Number(saveId) || (editingLeadId && Number(x.id)===Number(editingLeadId)));
+    if(idx>=0)leads=leads.map((x,i)=>i===idx?rec:x); else leads.unshift(rec);
+    leads=__dedupeLeads(leads);
+    editingLeadId=saveId;
+    await persistData('crm-save');
+    closeLeadModal(); renderAll(); toast('บันทึกข้อมูลลูกค้าแล้ว');
+  }finally{
+    __leadSaveInFlight=false;
+    if(saveBtn){saveBtn.disabled=false; saveBtn.innerHTML=saveBtn.dataset.oldText||'<i class="ti ti-check"></i>บันทึกข้อมูลลูกค้า';}
+  }
 }
 async function deleteLead(id){if(!canDeleteCRM()){toast('ลบ CRM ได้เฉพาะ Owner / Manager');return;}if(!await confirmBox('ลบข้อมูลลูกค้า?','ยืนยันลบ Lead นี้'))return;leads=leads.filter(x=>Number(x.id)!==Number(id));await persistData();renderAll();}
 
@@ -1206,7 +1243,7 @@ function __safeSectionValue(section){
     if(section==='tasks')return __safeArr(tasks).map(t=>({...t,brief:normLinks(t.brief),deliver:normLinks(t.deliver),history:__safeArr(t.history),comments:__safeArr(t.comments)}));
     if(section==='financial')return __safeArr(financial).map(normalizeFinance);
     if(section==='tracking')return __safeArr(tracking).map(normalizeTracking);
-    if(section==='leads')return __safeArr(typeof leads==='undefined'?[]:leads).map(normalizeLead);
+    if(section==='leads')return __dedupeLeads(typeof leads==='undefined'?[]:leads);
     if(section==='contentSchedule')return __safeArr(typeof contentSchedule==='undefined'?[]:contentSchedule).map(normalizeContentRecord);
   }catch(e){console.warn('safe section normalize failed',section,e);}
   return [];
@@ -1304,7 +1341,7 @@ function __segmentNormalize(section,items){
     if(section==='tasks')return arr.map(t=>({...t,brief:normLinks(t.brief),deliver:normLinks(t.deliver),history:__safeArr(t.history),comments:__safeArr(t.comments)}));
     if(section==='financial')return arr.map(normalizeFinance);
     if(section==='tracking')return arr.map(normalizeTracking);
-    if(section==='leads')return arr.map(normalizeLead);
+    if(section==='leads')return __dedupeLeads(arr);
     if(section==='contentSchedule')return arr.map(normalizeContentRecord);
   }catch(e){console.warn('segment normalize failed',section,e);}
   return arr;
