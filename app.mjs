@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection, getDocs, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 
 const FIREBASE_CONFIG={apiKey:"AIzaSyB7NU4h_cgjPd9U894RkJXxj1DxuT_47aE",authDomain:"gws-project-9dfee.firebaseapp.com",projectId:"gws-project-9dfee",storageBucket:"gws-project-9dfee.firebasestorage.app",messagingSenderId:"1030738489010",appId:"1:1030738489010:web:f35eb21cc0512fed3563ab"};
@@ -1561,3 +1561,177 @@ window.showView=showView;
 setTimeout(enableTouchHorizontalScrollFix,300);
 setTimeout(enableTouchHorizontalScrollFix,1200);
 /* ================= End iPad touch horizontal scroll fix ================= */
+
+
+/* ================= Performance + item-based Firestore save patch =================
+   Goal: make saves faster for growing data and 14+ users.
+   - Store each row as its own document under sections/<section>/items/<itemId>.
+   - Save only the active section instead of rewriting all sections.
+   - Keep old section.items as fallback for migration, but stop writing huge arrays each save.
+   - Use soft delete per item, item-level backup, and lightweight audit.
+*/
+const ITEM_DATA_ENABLED = true;
+function __perfSectionFromAction(action=''){
+  const a=String(action||'').toLowerCase();
+  if(a.includes('crm')||a.includes('lead'))return ['leads'];
+  if(a.includes('content'))return ['contentSchedule'];
+  if(a.includes('finance')||a.includes('financial'))return ['financial'];
+  if(a.includes('tracking'))return ['tracking'];
+  if(a.includes('task'))return ['tasks'];
+  if(a.includes('team'))return ['team'];
+  if(a.includes('brand'))return ['brands','tasks','financial','tracking','contentSchedule'];
+  if(currentView==='crm')return ['leads'];
+  if(currentView==='content')return ['contentSchedule'];
+  if(currentView==='financial')return ['financial'];
+  if(currentView==='tracking')return ['tracking'];
+  if(currentView==='tasks')return ['tasks'];
+  if(currentView==='team')return ['team'];
+  if(currentView==='brands'||currentView==='brand-info')return ['brands','tasks','financial','tracking','contentSchedule'];
+  return ['brands','team','tasks','financial','tracking','leads','contentSchedule'];
+}
+function __perfItemCollection(section){return collection(db, ...FIRESTORE_DOC_PATH, 'sections', section, 'items');}
+function __perfSafeDocId(raw){
+  let s=String(raw||'item').trim();
+  try{s=encodeURIComponent(s);}catch(e){}
+  s=s.replace(/[.%/#?\[\]]/g,'_').replace(/_+/g,'_');
+  return s.slice(0,420)||('item_'+Date.now());
+}
+function __perfItemId(section,item){
+  if(item && item.id!==undefined && item.id!==null && item.id!=='')return __perfSafeDocId(section+'_id_'+item.id);
+  if(item && item.email)return __perfSafeDocId(section+'_email_'+String(item.email).toLowerCase().trim());
+  if(item && item.name)return __perfSafeDocId(section+'_name_'+item.name);
+  if(item && item.brand && item.date)return __perfSafeDocId(section+'_bd_'+item.brand+'_'+item.date+'_'+(item.installment||''));
+  return __perfSafeDocId(section+'_hash_'+__segmentItemKey(item));
+}
+function __perfStableString(obj){
+  try{return JSON.stringify(obj, Object.keys(obj||{}).sort());}catch(e){try{return JSON.stringify(obj);}catch(_e){return String(obj);}}
+}
+function __perfItemChanged(a,b){return __perfStableString(a)!==__perfStableString(b);}
+async function __perfReadItemDocs(section){
+  const snap=await getDocs(__perfItemCollection(section));
+  const items=[]; const rawDocs={};
+  snap.forEach(d=>{
+    const v=d.data()||{};
+    rawDocs[d.id]=v;
+    if(v.deleted)return;
+    const item=v.data!==undefined?v.data:v.item!==undefined?v.item:v;
+    if(item && typeof item==='object')items.push(item);
+  });
+  return {items:__segmentNormalize(section,items), rawDocs, count:snap.size};
+}
+async function __perfMigrateSectionItems(section,items){
+  const norm=__segmentNormalize(section,items);
+  if(!norm.length)return;
+  const actor=__safeCurrentActor();
+  let batch=writeBatch(db),ops=0;
+  for(const item of norm){
+    const id=__perfItemId(section,item);
+    batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'items',id),{data:item,itemKey:__segmentItemKey(item),deleted:false,migratedAt:serverTimestamp(),migratedAtClient:__safeNow(),updatedAt:serverTimestamp(),updatedAtClient:__safeNow(),updatedBy:actor},{merge:true});
+    ops++;
+    if(ops>=450){await batch.commit();batch=writeBatch(db);ops=0;}
+  }
+  if(ops)await batch.commit();
+  await setDoc(__segmentRef(section),{itemBased:true,itemCount:norm.length,migratedToItems:true,migratedAt:serverTimestamp(),migratedAtClient:__safeNow(),updatedAt:serverTimestamp(),updatedAtClient:__safeNow(),updatedBy:actor},{merge:true});
+}
+__segmentReadAll = async function(){
+  const mainSnap = await getDoc(docRef);
+  const mainData = mainSnap.exists()?mainSnap.data():{};
+  __segmentMainCache = mainData || {};
+  const combined = {...mainData};
+  __segmentRemoteCache = {};
+  for(const section of SAFE_SECTIONS){
+    let itemData={items:[],rawDocs:{},count:0};
+    try{itemData=await __perfReadItemDocs(section);}catch(e){console.warn('read item docs failed',section,e);}
+    if(itemData.items.length){
+      combined[section]=itemData.items;
+      __segmentRemoteCache[section]={items:itemData.items,itemBased:true,rawDocs:itemData.rawDocs};
+      try{await setDoc(__segmentRef(section),{itemBased:true,itemCount:itemData.items.length,updatedAtClient:__safeNow()},{merge:true});}catch(_e){}
+      continue;
+    }
+    const sectionSnap = await getDoc(__segmentRef(section)).catch(()=>null);
+    const sectionData = sectionSnap && sectionSnap.exists()?sectionSnap.data():null;
+    const legacyItems = sectionData && Array.isArray(sectionData.items) ? sectionData.items : __safeArr(mainData[section]);
+    const norm = __segmentNormalize(section,legacyItems);
+    combined[section]=norm;
+    __segmentRemoteCache[section]={items:norm,missing:!sectionData,itemBased:false};
+    if(norm.length){
+      try{await __perfMigrateSectionItems(section,norm);}catch(e){console.warn('item migration failed',section,e);}
+    }
+  }
+  return combined;
+};
+async function __perfSaveSection(section,action,remoteMain){
+  const actor=__safeCurrentActor();
+  const remoteRead=await __perfReadItemDocs(section).catch(e=>({items:[],rawDocs:{},count:0,error:e}));
+  let remoteItems=__segmentNormalize(section,remoteRead.items||[]);
+  // Fallback if item docs are not migrated yet.
+  if(!remoteItems.length){
+    const sectionSnap=await getDoc(__segmentRef(section)).catch(()=>null);
+    const sectionData=sectionSnap&&sectionSnap.exists()?sectionSnap.data():{};
+    remoteItems=__segmentNormalize(section,Array.isArray(sectionData.items)?sectionData.items:__safeArr(remoteMain[section]));
+  }
+  let localItems=__segmentNormalize(section,__safeSectionValue(section));
+  const warnings=[];
+  if(remoteItems.length>0 && localItems.length===0){
+    warnings.push(`${section}: protected ${remoteItems.length} existing item(s)`);
+    localItems=remoteItems;
+  }
+  const remoteById=new Map(remoteItems.map(it=>[__perfItemId(section,it),it]));
+  const localById=new Map(localItems.map(it=>[__perfItemId(section,it),it]));
+  const changed=[]; const removed=[];
+  for(const [id,item] of localById.entries()){
+    if(!remoteById.has(id) || __perfItemChanged(remoteById.get(id),item))changed.push([id,item,remoteById.get(id)||null]);
+  }
+  for(const [id,item] of remoteById.entries()){
+    if(!localById.has(id))removed.push([id,item]);
+  }
+  if(!changed.length && !removed.length){
+    await setDoc(__segmentRef(section),{itemBased:true,itemCount:localItems.length,lastCheckedAtClient:__safeNow()},{merge:true});
+    return {section,before:remoteItems.length,after:localItems.length,changed:0,removed:0,warnings};
+  }
+  let batch=writeBatch(db),ops=0;
+  const commitIfNeeded=async(force=false)=>{if(ops && (force||ops>=430)){await batch.commit();batch=writeBatch(db);ops=0;}};
+  const now=__safeNow();
+  for(const [id,item,before] of changed){
+    batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'items',id),{data:item,itemKey:__segmentItemKey(item),deleted:false,updatedAt:serverTimestamp(),updatedAtClient:now,updatedBy:actor,createdAtClient:before?undefined:now},{merge:true});ops++;await commitIfNeeded();
+    if(before){batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'itemBackups',__perfSafeDocId(id+'_'+Date.now()+'_'+Math.random())),{itemId:id,before,after:item,action,at:serverTimestamp(),atClient:now,by:actor},{merge:true});ops++;await commitIfNeeded();}
+  }
+  for(const [id,item] of removed){
+    batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'items',id),{data:item,itemKey:__segmentItemKey(item),deleted:true,deletedAt:serverTimestamp(),deletedAtClient:now,deletedBy:actor,updatedAt:serverTimestamp(),updatedAtClient:now,updatedBy:actor},{merge:true});ops++;await commitIfNeeded();
+    batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'deletedItems',__perfSafeDocId(id+'_'+Date.now()+'_'+Math.random())),{itemId:id,item,action,deletedAt:serverTimestamp(),deletedAtClient:now,deletedBy:actor},{merge:true});ops++;await commitIfNeeded();
+  }
+  await commitIfNeeded(true);
+  const audit={id:Date.now()+Math.floor(Math.random()*100000),at:now,by:actor,action,beforeCount:remoteItems.length,afterCount:localItems.length,changedCount:changed.length,removedCount:removed.length,itemBased:true};
+  const sectionSnap=await getDoc(__segmentRef(section)).catch(()=>null);
+  const sectionData=sectionSnap&&sectionSnap.exists()?sectionSnap.data():{};
+  await setDoc(__segmentRef(section),{itemBased:true,itemCount:localItems.length,updatedAt:serverTimestamp(),updatedAtClient:now,updatedBy:actor,schemaVersion:3,audit:[audit,...__safeArr(sectionData.audit)].slice(0,500),lastWarnings:warnings},{merge:true});
+  return {section,before:remoteItems.length,after:localItems.length,changed:changed.length,removed:removed.length,warnings};
+}
+__segmentedPersistData = async function(action='save'){
+  if(isSaving){toast('กำลังบันทึกอยู่ กรุณารอสักครู่');return;}
+  isSaving=true;
+  try{
+    if(docRef){
+      const remoteMainSnap=await getDoc(docRef);
+      const remoteMain=remoteMainSnap.exists()?remoteMainSnap.data():{};
+      const targetSections=[...new Set(__perfSectionFromAction(action))];
+      const results=[];
+      for(const section of targetSections){results.push(await __perfSaveSection(section,action,remoteMain));}
+      const counts={...remoteMain.sectionCounts};
+      results.forEach(r=>{counts[r.section]=r.after;});
+      const warnings=results.flatMap(r=>r.warnings||[]);
+      const rootAudit={id:Date.now(),at:__safeNow(),by:__safeCurrentActor(),action,mode:'item-based-fast-save',sections:results.map(r=>({section:r.section,before:r.before,after:r.after,changed:r.changed,removed:r.removed})),warnings};
+      await setDoc(docRef,{schemaVersion:3,itemBasedData:true,segmentedData:true,sectionCounts:counts,updatedAt:serverTimestamp(),updatedAtClient:__safeNow(),updatedBy:__safeCurrentActor(),lastSaveWarnings:warnings.length?[{at:__safeNow(),by:__safeCurrentActor(),warnings},...__safeArr(remoteMain.lastSaveWarnings)].slice(0,30):__safeArr(remoteMain.lastSaveWarnings).slice(0,30),appAudit:[rootAudit,...__safeArr(remoteMain.appAudit)].slice(0,500)},{merge:true});
+      setStatus(true);
+    }
+    toast('บันทึกแล้ว');
+  }catch(e){console.error('item based persist error',e);toast('บันทึกไม่สำเร็จ');setStatus(false);}
+  finally{setTimeout(()=>{isSaving=false},250);}
+};
+persistData=__segmentedPersistData;
+window.persistData=__segmentedPersistData;
+window.persistDataSafe=__segmentedPersistData;
+window.__segmentReadAll=__segmentReadAll;
+window.__perfSaveSection=__perfSaveSection;
+window.__perfSectionFromAction=__perfSectionFromAction;
+/* ================= End performance + item-based Firestore save patch ================= */

@@ -1,153 +1,26 @@
-Growth Syndicate Dashboard - Complete Multi-user Website
-=========================================================
+Growth Syndicate Web App - Performance + Item-based Firestore
 
-ใน ZIP นี้มีเว็บเวอร์ชันพร้อมใช้งานแบบออนไลน์หลายคน พร้อม favicon / app icon จากโลโก้ที่คุณส่งมา
+เวอร์ชันนี้ปรับระบบบันทึกข้อมูลให้เหมาะกับข้อมูลเยอะและผู้ใช้หลายคน:
 
-ไฟล์สำคัญ
-- index.html : เว็บหลัก
-- favicon.ico : ไอคอนเว็บสำหรับ browser tab
-- site.webmanifest : app manifest
-- assets/icons/* : ไอคอนหลายขนาด
-- assets/images/growth-syndicate-logo.jpg : โลโก้สำหรับหน้าเว็บ
-- firebase-rules.txt : ตัวอย่าง Rules สำหรับ Firestore และ Storage
+1. ข้อมูลแต่ละรายการถูกเก็บเป็น document ย่อยใน Firestore
+   dashboards/growth-syndicate-main/sections/<section>/items/<itemId>
 
-วิธีเปิดให้ทีมใช้งานแบบ "ส่งลิงก์อย่างเดียว"
-1) สร้าง Firebase Project
-2) เปิด Firestore Database
-3) เปิด Firebase Storage
-4) เพิ่ม Web App ใน Firebase แล้วคัดลอก firebaseConfig
-5) เปิดไฟล์ index.html แล้วแทนค่าตรง FIREBASE_CONFIG
-6) นำโฟลเดอร์นี้ไปอัปโหลดขึ้น Netlify / Vercel / Cloudflare Pages
-7) ส่งลิงก์เว็บให้ทีม ทุกคนจะเห็นข้อมูลเดียวกันและอัปโหลดไฟล์ร่วมกันได้
+2. เวลากดบันทึก จะบันทึกเฉพาะแถบที่กำลังใช้งาน ไม่เขียนทับทุกแถบพร้อมกัน
+   - CRM -> leads เท่านั้น
+   - Content Schedule -> contentSchedule เท่านั้น
+   - Financial -> financial เท่านั้น
+   - Project Tracking -> tracking เท่านั้น
+   - Team -> team เท่านั้น
+   - Brand -> brands และข้อมูลที่ผูกกับชื่อแบรนด์เฉพาะเมื่อมีการเปลี่ยนชื่อ
 
-ถ้ายังไม่ใส่ FIREBASE_CONFIG
-เว็บยังเปิดได้ แต่จะเป็น LOCAL DEMO ข้อมูลจะอยู่เฉพาะเครื่องนั้น ไม่แชร์กับคนอื่น
+3. มีระบบ migrate ข้อมูลเก่าจาก section array ไปเป็น item documents อัตโนมัติเมื่อเปิดเว็บ
 
-หมายเหตุด้านความปลอดภัย
-ถ้าคุณต้องการให้ "ใครมีลิงก์ก็ใช้งานได้เลย" Rules จะต้องอนุญาต read/write แบบ public ตามตัวอย่างใน firebase-rules.txt
-ถ้าต้องการล็อกอินเฉพาะทีม ต้องเพิ่ม Firebase Authentication เพิ่มอีกชั้นหนึ่ง
+4. มีระบบกันข้อมูลหาย:
+   - ถ้า remote มีข้อมูล แต่ local กำลังจะบันทึกเป็นว่าง ระบบจะไม่ล้างข้อมูลเดิม
+   - ลบข้อมูลเป็น soft delete ใน item document
+   - เก็บ audit log และ item backup เฉพาะรายการที่เปลี่ยน
 
-
-สถานะเวอร์ชันนี้
-- ใส่ Firebase config ของโปรเจกต์ gws-project-9dfee แล้ว
-- พร้อมอัปโหลดขึ้น Netlify / Vercel / Cloudflare Pages
-- Firestore ใช้เก็บข้อมูล Task / Brand / Team ร่วมกันหลายคน
-- Firebase Storage จะใช้ได้เมื่อเปิด Storage ใน Firebase แล้ว หากยังไม่เปิด ระบบจะยังบันทึกชื่อไฟล์ได้
-
-วิธีอัปโหลด Netlify แบบเร็ว
-1. เข้า https://app.netlify.com/drop
-2. ลากโฟลเดอร์นี้หรือ ZIP นี้ไปวาง
-3. รอจนได้ลิงก์ .netlify.app
-4. ส่งลิงก์ให้ทีมใช้งานได้
-
-
-อัปเดตเวอร์ชัน Minimal Sarabun
-- เปลี่ยนฟอนต์เป็น Sarabun ทั้งเว็บไซต์
-- ปรับธีมเป็นมินิมอลโทนสว่าง อ่านง่ายขึ้น
-- เพิ่มขนาดตัวอักษรโดยรวม
-- เปลี่ยนช่องไฟล์บรีฟงาน/ไฟล์ส่งงาน เป็นช่องใส่ลิงก์แทนการอัปโหลดไฟล์
-- ปรับโลโก้และ favicon ให้เป็นวงกลม
-
-วิธีอัปเดตเว็บบน Netlify
-1. เข้า Site เดิมใน Netlify
-2. ไปที่แท็บ Deploys
-3. ลาก ZIP เวอร์ชันนี้ไปวางในพื้นที่ Deploy
-4. รอ Deploy เสร็จ ลิงก์เดิมจะอัปเดตอัตโนมัติ
-
-
-อัปเดตล่าสุด: เพิ่มข้อมูล Package และระยะเวลาสัญญา 1-12 เดือนในหน้าแบรนด์ลูกค้า
-
-
-อัปเดตล่าสุด
-- เพิ่มแถบ "ข้อมูลของแต่ละแบรนด์" สำหรับเก็บลิงก์รูปสินค้า Brand Guideline โฟลเดอร์ Drive หรือไฟล์ข้อมูลต่าง ๆ ให้ทีมกราฟิกเปิดใช้งาน
-- Dashboard ถูกจำกัดให้ดูได้เฉพาะ Manager หรือ Owner
-- การเพิ่ม/แก้ไข/ลบรายชื่อทีมงานและตำแหน่ง ถูกจำกัดให้เฉพาะ Owner
-
-รหัสเริ่มต้นในไฟล์นี้
-- Manager: gws-manager-2025
-- Owner: gws-owner-2025
-
-หมายเหตุเรื่องความปลอดภัย
-ระบบสิทธิ์นี้เป็นการล็อกหน้าเว็บฝั่ง client เพื่อใช้งานง่ายกับทีมที่มีลิงก์เดียวกัน ถ้าต้องการความปลอดภัยจริงแบบรายบุคคล แนะนำเพิ่ม Firebase Authentication ในเวอร์ชันถัดไป
-
-
-=== เวอร์ชัน Login ด้วย Firebase Authentication ===
-
-ก่อนใช้งานเวอร์ชันนี้ ให้ทำใน Firebase Console เพิ่ม 1 ครั้ง:
-
-1) ไปที่ Build > Authentication
-2) กด Get started
-3) เข้าแท็บ Sign-in method
-4) เปิด Email/Password
-5) ไปที่แท็บ Users
-6) กด Add user แล้วสร้างบัญชีผู้ใช้ให้ทีม เช่น email + password
-
-Owner เริ่มต้นของเว็บนี้ถูกตั้งเป็น:
-jonusworks@gmail.com
-
-ถ้าต้องการให้คนอื่นเป็น Manager:
-1) Login ด้วยบัญชี Owner
-2) ไปที่แถบ ทีมงาน
-3) เพิ่ม/แก้ไขสมาชิกทีม
-4) ใส่ Email ให้ตรงกับบัญชีที่สร้างใน Firebase Authentication
-5) เลือกบทบาท Management
-
-ถ้าต้องการให้คนอื่นเป็น Graphic/Team:
-- สร้างบัญชีใน Firebase Authentication
-- เพิ่มชื่อในทีมงานพร้อม Email หรือให้ Login เข้ามาใช้งานแบบ Graphic ได้
-
-Firestore Rules ที่แนะนำอยู่ในไฟล์ firebase-rules.txt
-ควรเปลี่ยนจาก allow read, write: if true; เป็น allow read, write: if request.auth != null;
-
-=== อัปเดตล่าสุด: Login ด้วย Google / Gmail ===
-
-เวอร์ชันนี้เพิ่มปุ่ม "เข้าสู่ระบบด้วย Google / Gmail" ในหน้า Login แล้ว และยังคง Email/Password ไว้เป็นตัวเลือกสำรอง
-
-สิ่งที่ต้องเปิดใน Firebase Console:
-1) ไปที่ Build > Authentication
-2) เข้าแท็บ Sign-in method
-3) เปิด Provider ชื่อ Google
-4) เลือก Project support email แล้วกด Save
-5) ถ้า Login แล้วขึ้น error เรื่อง unauthorized domain ให้ไปที่ Authentication > Settings > Authorized domains แล้วเพิ่มโดเมน Netlify ของเว็บ เช่น your-site-name.netlify.app
-
-สิทธิ์ Owner / Manager / Graphic ยังยึดตาม email ที่ Login เหมือนเดิม:
-- jonusworks@gmail.com เป็น Owner เริ่มต้น
-- คนอื่นให้ Owner ไปเพิ่ม email ในหน้า Team แล้วเลือกบทบาท
-
-อัปเดต Content Schedule - Batch Posts
-- ในหน้าต่างเพิ่มคอนเทนต์ สามารถกด "เพิ่มโพสต์เข้าลิสต์" เพื่อเพิ่มหลายโพสต์ของแบรนด์/วันเดียวกันได้
-- แต่ละโพสต์ยังเลือกช่องทางได้หลายช่องทาง เช่น Facebook + Instagram + TikTok
-- กดบันทึกครั้งเดียว ระบบจะบันทึกโพสต์ทั้งหมดในลิสต์ พร้อมโพสต์ที่กรอกอยู่ปัจจุบัน
-
-=== อัปเดตระยะยาว: Long-term Data Protection ===
-
-เวอร์ชันนี้เปลี่ยนโครงสร้างการบันทึกข้อมูลระยะยาวเพื่อลดความเสี่ยงข้อมูลหายจากการเขียนทับ document ก้อนเดียว
-
-โครงสร้างใหม่ใน Firestore:
-- dashboards/growth-syndicate-main : เก็บ metadata, จำนวนรายการ, audit รวม
-- dashboards/growth-syndicate-main/sections/brands : ข้อมูลแบรนด์ลูกค้า
-- dashboards/growth-syndicate-main/sections/team : ข้อมูลทีมงาน
-- dashboards/growth-syndicate-main/sections/tasks : ข้อมูลงานทั้งหมด
-- dashboards/growth-syndicate-main/sections/financial : ข้อมูล Financial
-- dashboards/growth-syndicate-main/sections/tracking : ข้อมูล Project Tracking
-- dashboards/growth-syndicate-main/sections/leads : ข้อมูล CRM / Leads
-- dashboards/growth-syndicate-main/sections/contentSchedule : ข้อมูล Content Schedule
-
-ระบบจะ migrate ข้อมูลจาก document หลักไปยัง sections ให้อัตโนมัติเมื่อเปิดเว็บหลังอัปเดต ถ้า section ไหนมีข้อมูลเดิมอยู่ ระบบจะไม่เขียนทับเป็นว่างโดยไม่ตั้งใจ
-
-ระบบป้องกันที่เพิ่ม:
-- แต่ละแถบบันทึกแยก section document ไม่เขียนทับกันทั้งระบบ
-- ก่อนบันทึกจะอ่านข้อมูลล่าสุดจาก Firebase ก่อนเสมอ
-- ถ้า remote มีข้อมูล แต่ข้อมูล local ว่าง ระบบจะกันไม่ให้ล้างข้อมูลเดิม
-- เก็บ backups แยกในแต่ละ section สูงสุด 30 ชุด
-- เก็บ audit log แยกในแต่ละ section สูงสุด 500 รายการ
-- เก็บ deletedItems สำหรับรายการที่ถูกลบ เพื่อใช้ตรวจสอบย้อนหลัง
-- เก็บ appAudit รวมที่ document หลัก
-- มีฟังก์ชัน exportCurrentSnapshot() สำหรับ backup JSON จาก console หากต้องการดาวน์โหลด snapshot ปัจจุบัน
-
-คำแนะนำหลังอัปเดต:
-1. อัปโหลดไฟล์เวอร์ชันนี้ทับใน GitHub/Vercel
-2. รอ Deploy เป็น Ready
-3. เปิดเว็บด้วยบัญชี Owner/Manager 1 ครั้ง เพื่อให้ระบบ migrate section documents
-4. ไปที่ Firebase > Firestore แล้วตรวจว่ามี path dashboards/growth-syndicate-main/sections/... ครบ
-5. หลังจากนั้นให้ทีมใช้งานจากเว็บเวอร์ชันใหม่เท่านั้น ไม่ควรเปิดแท็บเว็บเวอร์ชันเก่าค้างไว้
+ข้อแนะนำก่อนอัปเดต:
+- Backup Firestore document ปัจจุบันก่อนเสมอ
+- หลัง deploy ให้ Owner/Manager เปิดเว็บ 1 ครั้งเพื่อให้ระบบ migrate
+- ให้ทุกคน refresh หน้าเว็บใหม่ก่อนใช้งาน
