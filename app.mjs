@@ -1738,3 +1738,166 @@ window.__segmentReadAll=__segmentReadAll;
 window.__perfSaveSection=__perfSaveSection;
 window.__perfSectionFromAction=__perfSectionFromAction;
 /* ================= End performance + item-based Firestore save patch ================= */
+
+/* ================= Brand info save + full app save reliability patch =================
+   Fixes: edits made from Brand Information/Client Brands not being persisted,
+   especially nested fields such as info links, image links, channels and Facebook page URL.
+   Also makes save actions explicit so item-based Firestore writes only the intended sections.
+*/
+function __gsDeepStableString(value){
+  const seen=new WeakSet();
+  const normalize=(v)=>{
+    if(v===null||typeof v!=='object')return v;
+    if(seen.has(v))return '[Circular]';
+    seen.add(v);
+    if(Array.isArray(v))return v.map(normalize);
+    const out={};
+    Object.keys(v).sort().forEach(k=>{
+      if(v[k]!==undefined)out[k]=normalize(v[k]);
+    });
+    return out;
+  };
+  try{return JSON.stringify(normalize(value));}catch(e){try{return JSON.stringify(value);}catch(_e){return String(value);}}
+}
+__perfStableString = __gsDeepStableString;
+__perfItemChanged = function(a,b){return __gsDeepStableString(a)!==__gsDeepStableString(b);};
+
+// Preserve Facebook page URL and all nested brand fields when data is read back from Firestore.
+normalizeBrand = function(b){
+  if(typeof b==='string')return brandObj(b,'',1,[],'',[]);
+  return brandObj(
+    b?.name||'',
+    b?.package||'',
+    b?.contractMonths||1,
+    b?.infoLinks||[],
+    b?.logoUrl||b?.imageUrl||'',
+    b?.imageLinks||b?.productImages||[],
+    {
+      customer:b?.customer||b?.owner||'',
+      product:b?.product||b?.businessProduct||'',
+      packageAmount:b?.packageAmount||0,
+      contentTotal:b?.contentTotal||'',
+      imageCount:b?.imageCount||0,
+      videoCount:b?.videoCount||0,
+      channels:b?.channels||{},
+      facebookPageUrl:b?.facebookPageUrl||b?.fbPageUrl||b?.facebookUrl||''
+    }
+  );
+};
+
+const __gsOldPerfSectionFromAction = typeof __perfSectionFromAction==='function' ? __perfSectionFromAction : null;
+__perfSectionFromAction = function(action=''){
+  const a=String(action||'').toLowerCase();
+  if(a==='brand-save-only'||a==='brand-update'||a==='brand-create')return ['brands'];
+  if(a==='brand-rename'||a==='brand-delete')return ['brands','tasks','financial','tracking','contentSchedule'];
+  if(a==='team-save'||a==='team-delete')return ['team','tasks'];
+  if(a==='task-save'||a==='task-delete'||a==='task-status'||a==='task-comment')return ['tasks'];
+  if(a==='finance-save'||a==='finance-delete')return ['financial'];
+  if(a==='tracking-save'||a==='tracking-delete')return ['tracking'];
+  if(a==='content-save'||a==='content-delete')return ['contentSchedule'];
+  if(a==='crm-save'||a==='crm-delete'||a==='lead-save'||a==='lead-delete')return ['leads'];
+  if(__gsOldPerfSectionFromAction)return __gsOldPerfSectionFromAction(action);
+  return ['brands','team','tasks','financial','tracking','leads','contentSchedule'];
+};
+window.__perfSectionFromAction=__perfSectionFromAction;
+
+function __gsCollectBrandForm(){
+  const name=String(document.getElementById('brand-name')?.value||'').trim();
+  const customer=String(document.getElementById('brand-customer')?.value||'').trim();
+  const product=String(document.getElementById('brand-product')?.value||'').trim();
+  const packageName=String(document.getElementById('brand-package')?.value||'').trim();
+  const packageAmount=Number(document.getElementById('brand-package-amount')?.value)||0;
+  const contentTotal=String(document.getElementById('brand-content-total')?.value||'').trim();
+  const imageCount=Number(document.getElementById('brand-image-count')?.value)||0;
+  const videoCount=Number(document.getElementById('brand-video-count')?.value)||0;
+  const channels=readChannelGrid('brand-channel-grid','brand-channel');
+  const contractMonths=Number(document.getElementById('brand-contract')?.value)||1;
+  let logoUrl=String(document.getElementById('brand-logo-url')?.value||'').trim();
+  if(logoUrl&&!/^https?:\/\//i.test(logoUrl))logoUrl='https://'+logoUrl;
+  let facebookPageUrl=String(document.getElementById('brand-facebook-page-url')?.value||'').trim();
+  if(facebookPageUrl&&!/^https?:\/\//i.test(facebookPageUrl))facebookPageUrl='https://'+facebookPageUrl;
+  return {name,customer,product,packageName,packageAmount,contentTotal,imageCount,videoCount,channels,contractMonths,logoUrl,facebookPageUrl};
+}
+
+async function __gsPersistBrand(action){
+  try{
+    await persistData(action);
+    return true;
+  }catch(e){
+    console.error('brand explicit save failed',e);
+    toast('บันทึกข้อมูลแบรนด์ไม่สำเร็จ');
+    return false;
+  }
+}
+
+saveBrand = async function(){
+  if(!canManageAll()){toast('เฉพาะ Owner / Manager เท่านั้นที่บันทึกแบรนด์ได้');return;}
+  if(window.__brandSaveInProgress){toast('กำลังบันทึกข้อมูลแบรนด์อยู่ กรุณารอสักครู่');return;}
+  window.__brandSaveInProgress=true;
+  const saveBtn=document.querySelector('#brand-modal .modal-foot .btn.primary');
+  const oldBtnHtml=saveBtn?.innerHTML;
+  try{
+    if(saveBtn){saveBtn.disabled=true;saveBtn.innerHTML='<i class="ti ti-loader-2"></i>กำลังบันทึก...';}
+    const form=__gsCollectBrandForm();
+    if(!form.name){toast('กรุณาใส่ชื่อแบรนด์');return;}
+    if(form.name!==editingBrandName&&brands.some(b=>brandName(b)===form.name)){toast('มีแบรนด์นี้แล้ว');return;}
+    const oldName=editingBrandName||'';
+    const oldBrand=oldName?brandByName(oldName):null;
+    const nextBrand=brandObj(form.name,form.packageName,form.contractMonths,tempBrandInfoLinks,form.logoUrl,tempBrandImages,{
+      customer:form.customer,
+      product:form.product,
+      packageAmount:form.packageAmount,
+      contentTotal:form.contentTotal,
+      imageCount:form.imageCount,
+      videoCount:form.videoCount,
+      channels:form.channels,
+      facebookPageUrl:form.facebookPageUrl
+    });
+    if(oldName){brands=brands.map(b=>brandName(b)===oldName?nextBrand:b);}else{brands=[nextBrand,...brands];}
+    const renamed=!!oldName && oldName!==form.name;
+    if(renamed){
+      const historyText=`แบรนด์: ${oldName} → ${form.name}`;
+      tasks=tasks.map(t=>t.brand===oldName?{...t,brand:form.name,history:[{at:new Date().toISOString(),by:currentActorName(),text:historyText},...(t.history||[])]}:t);
+      financial=financial.map(f=>f.brand===oldName?{...f,brand:form.name}:f);
+      tracking=tracking.map(r=>r.brand===oldName?{...r,brand:form.name}:r);
+      try{contentSchedule=contentSchedule.map(c=>c.brand===oldName?{...c,brand:form.name}:c);}catch(e){}
+    }
+    // Force an explicit brand save. This prevents Brand Information edits from being routed to the wrong section.
+    const ok=await __gsPersistBrand(renamed?'brand-rename':(oldName?'brand-save-only':'brand-create'));
+    if(!ok)return;
+    closeBrandModal();
+    renderAll();
+    toast(oldName?'แก้ไขข้อมูลแบรนด์แล้ว':'เพิ่มแบรนด์แล้ว');
+  }catch(e){
+    console.error('saveBrand reliability patch error',e);
+    toast('บันทึกข้อมูลแบรนด์ไม่สำเร็จ กรุณาตรวจข้อมูลแล้วลองใหม่');
+  }finally{
+    window.__brandSaveInProgress=false;
+    if(saveBtn){saveBtn.disabled=false;saveBtn.innerHTML=oldBtnHtml||'<i class="ti ti-check"></i>บันทึก';}
+  }
+};
+window.saveBrand=saveBrand;
+
+removeBrand = async function(name){
+  if(!canManageAll()){toast('เฉพาะ Owner / Manager เท่านั้นที่ลบแบรนด์ได้');return;}
+  if(tasks.some(t=>t.brand===name)){toast('ไม่สามารถลบแบรนด์ที่มีงานอยู่');return;}
+  if(!await confirmBox('ลบแบรนด์?',`ยืนยันลบแบรนด์ ${name}?`))return;
+  brands=brands.filter(x=>brandName(x)!==name);
+  await persistData('brand-delete');
+  renderAll();
+  toast('ลบแบรนด์แล้ว');
+};
+window.removeBrand=removeBrand;
+
+// Re-bind brand modal buttons after all previous patches have loaded.
+const __gsOldBindActionButtonsFinal = typeof bindActionButtons==='function' ? bindActionButtons : null;
+bindActionButtons = function(){
+  if(__gsOldBindActionButtonsFinal)__gsOldBindActionButtonsFinal();
+  const brandSave=document.querySelector('#brand-modal .modal-foot .btn.primary');
+  if(brandSave){brandSave.type='button';brandSave.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();saveBrand();return false;};}
+  const brandCancel=document.querySelector('#brand-modal .modal-foot .btn:not(.primary)');
+  if(brandCancel){brandCancel.type='button';brandCancel.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();closeBrandModal();return false;};}
+};
+window.bindActionButtons=bindActionButtons;
+setTimeout(()=>{try{bindActionButtons();renderAll();}catch(e){console.warn('final bind failed',e);}},500);
+/* ================= End brand info save + full app save reliability patch ================= */
