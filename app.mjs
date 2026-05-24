@@ -1901,3 +1901,166 @@ bindActionButtons = function(){
 window.bindActionButtons=bindActionButtons;
 setTimeout(()=>{try{bindActionButtons();renderAll();}catch(e){console.warn('final bind failed',e);}},500);
 /* ================= End brand info save + full app save reliability patch ================= */
+
+/* ================= Emergency final fix: brand save + item docs read/write =================
+   Root cause fixed here:
+   1) Previous item-based saves could send undefined fields to Firestore, causing save failure.
+   2) Item documents were written under sections/<section>/items, but the loader still preferred section.items,
+      so saved edits could look like they did not persist.
+   This patch writes clean Firestore objects and reads item documents as the source of truth.
+*/
+function __gsCleanFirestoreValue(v){
+  if(v===undefined)return undefined;
+  if(v===null)return null;
+  if(Array.isArray(v))return v.map(__gsCleanFirestoreValue).filter(x=>x!==undefined);
+  if(typeof v==='object'){
+    if(v && typeof v.toDate==='function')return v;
+    const out={};
+    Object.keys(v).forEach(k=>{
+      const cleaned=__gsCleanFirestoreValue(v[k]);
+      if(cleaned!==undefined)out[k]=cleaned;
+    });
+    return out;
+  }
+  return v;
+}
+async function __gsReadItemsAsSource(section){
+  const items=[];
+  try{
+    const snap=await getDocs(collection(db,...FIRESTORE_DOC_PATH,'sections',section,'items'));
+    snap.forEach(d=>{
+      const v=d.data()||{};
+      if(v.deleted)return;
+      const item=v.data!==undefined?v.data:(v.item!==undefined?v.item:v);
+      if(item && typeof item==='object')items.push(item);
+    });
+  }catch(e){console.warn('read item docs failed',section,e);}
+  return __segmentNormalize(section,items);
+}
+__segmentReadAll = async function(){
+  const mainSnap=await getDoc(docRef);
+  const mainData=mainSnap.exists()?mainSnap.data():{};
+  __segmentMainCache=mainData||{};
+  const combined={...mainData};
+  __segmentRemoteCache={};
+  for(const section of SAFE_SECTIONS){
+    let items=await __gsReadItemsAsSource(section);
+    let sectionData=null;
+    if(!items.length){
+      try{
+        const sectionSnap=await getDoc(__segmentRef(section));
+        sectionData=sectionSnap&&sectionSnap.exists()?sectionSnap.data():null;
+        if(sectionData && Array.isArray(sectionData.items))items=__segmentNormalize(section,sectionData.items);
+      }catch(e){console.warn('read section fallback failed',section,e);}
+    }
+    if(!items.length)items=__segmentNormalize(section,__safeArr(mainData[section]));
+    combined[section]=items;
+    __segmentRemoteCache[section]={...(sectionData||{}),items,itemBased:true};
+  }
+  return combined;
+};
+window.__segmentReadAll=__segmentReadAll;
+
+__perfReadItemDocs = async function(section){
+  const snap=await getDocs(__perfItemCollection(section));
+  const items=[]; const rawDocs={};
+  snap.forEach(d=>{
+    const v=d.data()||{};
+    rawDocs[d.id]=v;
+    if(v.deleted)return;
+    const item=v.data!==undefined?v.data:(v.item!==undefined?v.item:v);
+    if(item && typeof item==='object')items.push(item);
+  });
+  return {items:__segmentNormalize(section,items),rawDocs,count:snap.size};
+};
+
+__perfSaveSection = async function(section,action,remoteMain={}){
+  const actor=__safeCurrentActor();
+  const remoteRead=await __perfReadItemDocs(section).catch(e=>({items:[],rawDocs:{},count:0,error:e}));
+  let remoteItems=__segmentNormalize(section,remoteRead.items||[]);
+  if(!remoteItems.length){
+    const sectionSnap=await getDoc(__segmentRef(section)).catch(()=>null);
+    const sectionData=sectionSnap&&sectionSnap.exists()?sectionSnap.data():{};
+    remoteItems=__segmentNormalize(section,Array.isArray(sectionData.items)?sectionData.items:__safeArr(remoteMain[section]));
+  }
+  let localItems=__segmentNormalize(section,__safeSectionValue(section));
+  const warnings=[];
+  if(remoteItems.length>0 && localItems.length===0){
+    warnings.push(`${section}: protected ${remoteItems.length} existing item(s)`);
+    localItems=remoteItems;
+  }
+  const remoteById=new Map(remoteItems.map(it=>[__perfItemId(section,it),it]));
+  const localById=new Map(localItems.map(it=>[__perfItemId(section,it),it]));
+  const changed=[]; const removed=[];
+  for(const [id,item] of localById.entries()){
+    if(!remoteById.has(id) || __perfItemChanged(remoteById.get(id),item))changed.push([id,item,remoteById.get(id)||null]);
+  }
+  for(const [id,item] of remoteById.entries()){
+    if(!localById.has(id))removed.push([id,item]);
+  }
+  const now=__safeNow();
+  if(changed.length || removed.length){
+    let batch=writeBatch(db),ops=0;
+    const commitIfNeeded=async(force=false)=>{if(ops && (force||ops>=430)){await batch.commit();batch=writeBatch(db);ops=0;}};
+    for(const [id,item,before] of changed){
+      const payload={data:item,itemKey:__segmentItemKey(item),deleted:false,updatedAt:serverTimestamp(),updatedAtClient:now,updatedBy:actor};
+      if(!before)payload.createdAtClient=now;
+      batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'items',id),__gsCleanFirestoreValue(payload),{merge:true});ops++;await commitIfNeeded();
+      if(before){
+        batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'itemBackups',__perfSafeDocId(id+'_'+Date.now()+'_'+Math.random())),__gsCleanFirestoreValue({itemId:id,before,after:item,action,at:serverTimestamp(),atClient:now,by:actor}),{merge:true});ops++;await commitIfNeeded();
+      }
+    }
+    for(const [id,item] of removed){
+      batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'items',id),__gsCleanFirestoreValue({data:item,itemKey:__segmentItemKey(item),deleted:true,deletedAt:serverTimestamp(),deletedAtClient:now,deletedBy:actor,updatedAt:serverTimestamp(),updatedAtClient:now,updatedBy:actor}),{merge:true});ops++;await commitIfNeeded();
+      batch.set(doc(db,...FIRESTORE_DOC_PATH,'sections',section,'deletedItems',__perfSafeDocId(id+'_'+Date.now()+'_'+Math.random())),__gsCleanFirestoreValue({itemId:id,item,action,deletedAt:serverTimestamp(),deletedAtClient:now,deletedBy:actor}),{merge:true});ops++;await commitIfNeeded();
+    }
+    await commitIfNeeded(true);
+  }
+  const sectionSnap=await getDoc(__segmentRef(section)).catch(()=>null);
+  const sectionData=sectionSnap&&sectionSnap.exists()?sectionSnap.data():{};
+  const audit={id:Date.now()+Math.floor(Math.random()*100000),at:now,by:actor,action,beforeCount:remoteItems.length,afterCount:localItems.length,changedCount:changed.length,removedCount:removed.length,itemBased:true};
+  await setDoc(__segmentRef(section),__gsCleanFirestoreValue({itemBased:true,itemCount:localItems.length,updatedAt:serverTimestamp(),updatedAtClient:now,updatedBy:actor,schemaVersion:4,audit:[audit,...__safeArr(sectionData.audit)].slice(0,500),lastWarnings:warnings}),{merge:true});
+  return {section,before:remoteItems.length,after:localItems.length,changed:changed.length,removed:removed.length,warnings};
+};
+window.__perfReadItemDocs=__perfReadItemDocs;
+window.__perfSaveSection=__perfSaveSection;
+
+// Make brand save report the real Firestore error and keep the modal open if saving fails.
+saveBrand = async function(){
+  if(!canManageAll()){toast('เฉพาะ Owner / Manager เท่านั้นที่บันทึกแบรนด์ได้');return;}
+  if(window.__brandSaveInProgress){toast('กำลังบันทึกข้อมูลแบรนด์อยู่ กรุณารอสักครู่');return;}
+  window.__brandSaveInProgress=true;
+  const saveBtn=document.querySelector('#brand-modal .modal-foot .btn.primary');
+  const oldBtnHtml=saveBtn?.innerHTML;
+  try{
+    if(saveBtn){saveBtn.disabled=true;saveBtn.innerHTML='<i class="ti ti-loader-2"></i>กำลังบันทึก...';}
+    const form=__gsCollectBrandForm();
+    if(!form.name){toast('กรุณาใส่ชื่อแบรนด์');return;}
+    if(form.name!==editingBrandName&&brands.some(b=>brandName(b)===form.name)){toast('มีแบรนด์นี้แล้ว');return;}
+    const oldName=editingBrandName||'';
+    const nextBrand=brandObj(form.name,form.packageName,form.contractMonths,tempBrandInfoLinks,form.logoUrl,tempBrandImages,{customer:form.customer,product:form.product,packageAmount:form.packageAmount,contentTotal:form.contentTotal,imageCount:form.imageCount,videoCount:form.videoCount,channels:form.channels,facebookPageUrl:form.facebookPageUrl});
+    if(oldName){brands=brands.map(b=>brandName(b)===oldName?nextBrand:b);}else{brands=[nextBrand,...brands];}
+    const renamed=!!oldName && oldName!==form.name;
+    if(renamed){
+      const historyText=`แบรนด์: ${oldName} → ${form.name}`;
+      tasks=tasks.map(t=>t.brand===oldName?{...t,brand:form.name,history:[{at:new Date().toISOString(),by:currentActorName(),text:historyText},...(t.history||[])]}:t);
+      financial=financial.map(f=>f.brand===oldName?{...f,brand:form.name}:f);
+      tracking=tracking.map(r=>r.brand===oldName?{...r,brand:form.name}:r);
+      try{contentSchedule=contentSchedule.map(c=>c.brand===oldName?{...c,brand:form.name}:c);}catch(e){}
+    }
+    await persistData(renamed?'brand-rename':(oldName?'brand-save-only':'brand-create'));
+    closeBrandModal();
+    await __segmentRefreshData().catch(()=>renderAll());
+    toast(oldName?'แก้ไขข้อมูลแบรนด์แล้ว':'เพิ่มแบรนด์แล้ว');
+  }catch(e){
+    console.error('FINAL saveBrand failed',e);
+    toast('บันทึกข้อมูลแบรนด์ไม่สำเร็จ: '+(e?.message||'กรุณารีเฟรชแล้วลองใหม่'));
+  }finally{
+    window.__brandSaveInProgress=false;
+    if(saveBtn){saveBtn.disabled=false;saveBtn.innerHTML=oldBtnHtml||'<i class="ti ti-check"></i>บันทึก';}
+  }
+};
+window.saveBrand=saveBrand;
+
+setTimeout(()=>{try{__segmentRefreshData();}catch(e){console.warn('post item refresh failed',e);}},900);
+/* ================= End emergency final fix ================= */
