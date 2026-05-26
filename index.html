@@ -259,7 +259,8 @@ button,input,select,textarea{font-family:var(--font)}
     <div class="finance-group"><div class="finance-group-title"><i class="ti ti-file-invoice"></i>Package / ค่าบริการ</div>
       <div class="field"><label>ราคา Package</label><input id="fin-package-amount" type="number" min="0" step="0.01" oninput="updateFinanceTotals()"></div>
       <div class="field"><label>VAT Package (%)</label><input id="fin-package-vat" type="number" min="0" step="0.01" value="7" oninput="updateFinanceTotals()"></div>
-      <div class="field"><label>รวม Package + VAT</label><input id="fin-package-total" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
+      <div class="field"><label>หัก ณ ที่จ่าย Package (%)</label><input id="fin-package-wht" type="number" min="0" step="0.01" value="0" placeholder="ใส่ 3 หากมีหัก ณ ที่จ่าย" oninput="updateFinanceTotals()"><div class="field-hint">คำนวณจากราคา Package ก่อน VAT</div></div>
+      <div class="field"><label>รวม Package + VAT - หัก ณ ที่จ่าย</label><input id="fin-package-total" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
       <div class="field"><label>งวดที่ / จำนวนงวด</label><input id="fin-installment" type="text" placeholder="เช่น 1/3 หรือ รายเดือน"></div>
     </div>
     <div class="finance-group"><div class="finance-group-title"><i class="ti ti-receipt-2"></i>ค่าใช้จ่ายเสริม</div>
@@ -274,15 +275,18 @@ button,input,select,textarea{font-family:var(--font)}
         <div class="cost-option"><input id="fin-cost-website-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-website-check">ค่าเว็บไซต์</label><input id="fin-cost-website" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
         <div class="cost-option"><input id="fin-cost-production-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-production-check">ค่าผลิตสินค้า</label><input id="fin-cost-production" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
         <div class="cost-option"><input id="fin-cost-adpermit-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-adpermit-check">ค่า ฆอ.</label><input id="fin-cost-adpermit" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-linepremium-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-linepremium-check">ค่าสมัคร ID LINE Premium</label><input id="fin-cost-linepremium" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-sampleproduct-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-sampleproduct-check">ค่าตัวอย่างสินค้า</label><input id="fin-cost-sampleproduct" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       </div>
       <div class="field"><label>รวมค่าใช้จ่ายเสริมก่อน VAT</label><input id="fin-extra-subtotal" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
       <div class="field"><label>VAT ค่าใช้จ่ายเสริม (%) <span style="font-weight:600;color:var(--muted)">ยกเว้นค่าแอด</span></label><input id="fin-extra-vat" type="number" min="0" step="0.01" value="7" oninput="updateFinanceTotals()"></div>
-      <div class="field"><label>รวมค่าใช้จ่ายเสริม + VAT</label><input id="fin-extra-total" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
+      <div class="field"><label>หัก ณ ที่จ่าย ค่าใช้จ่ายเสริม (%)</label><input id="fin-extra-wht" type="number" min="0" step="0.01" value="0" placeholder="ใส่ 3 หากมีหัก ณ ที่จ่าย" oninput="updateFinanceTotals()"><div class="field-hint">คำนวณจากยอดค่าใช้จ่ายเสริมก่อน VAT</div></div>
+      <div class="field"><label>รวมค่าใช้จ่ายเสริม + VAT - หัก ณ ที่จ่าย</label><input id="fin-extra-total" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
       <div class="field"><label>สถานะการชำระเงิน</label><select id="fin-payment-status"><option value="pending">รอดำเนินการ</option><option value="partial">ชำระบางส่วน</option><option value="paid">ชำระแล้ว</option><option value="overdue">เกินกำหนด</option><option value="stuck">Stuck</option></select></div>
     </div>
   </div>
   <div class="finance-grid-3">
-    <div class="field"><label>ยอดรวมที่ต้องชำระ</label><input id="fin-grand-total" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"><div class="field-hint">คำนวณอัตโนมัติจาก Package + VAT + ค่าแอด + ค่าใช้จ่ายเสริมอื่น + VAT (ค่าแอดไม่มี VAT)</div></div>
+    <div class="field"><label>ยอดรวมที่ต้องชำระ</label><input id="fin-grand-total" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"><div class="field-hint">คำนวณอัตโนมัติจาก Package + VAT - หัก ณ ที่จ่าย + ค่าใช้จ่ายเสริม + VAT - หัก ณ ที่จ่าย (ค่าแอดไม่มี VAT)</div></div>
     <div class="field"><label>รับชำระแล้วรวม</label><input id="fin-paid-amount" type="number" min="0" step="0.01" readonly placeholder="คำนวณจากรายการที่ชำระ"><div class="field-hint">กรอกแยกว่าเงินที่ได้รับเป็นของรายการใดด้านล่าง</div></div>
     <div class="field"><label>ยอดคงค้าง</label><input id="fin-balance" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
   </div>
@@ -301,6 +305,8 @@ button,input,select,textarea{font-family:var(--font)}
       <div class="payment-row"><label>ค่าเว็บไซต์</label><input id="fin-paid-website" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       <div class="payment-row"><label>ค่าผลิตสินค้า</label><input id="fin-paid-production" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       <div class="payment-row"><label>ค่า ฆอ.</label><input id="fin-paid-adpermit" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าสมัคร ID LINE Premium</label><input id="fin-paid-linepremium" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าตัวอย่างสินค้า</label><input id="fin-paid-sampleproduct" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
     </div>
   </div>
   <div class="field"><label>Note</label><textarea id="fin-note" placeholder="เช่น ชำระงวด 1 แล้ว / รอใบเสร็จ / ระยะเวลาสัญญา / เงื่อนไขพิเศษ"></textarea></div>
