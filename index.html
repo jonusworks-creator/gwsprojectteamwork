@@ -269,6 +269,11 @@ button,input,select,textarea{font-family:var(--font)}
         <div class="cost-option"><input id="fin-cost-fda-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-fda-check">ค่าจดอย.</label><input id="fin-cost-fda" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
         <div class="cost-option"><input id="fin-cost-productreg-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-productreg-check">ค่าจดทะเบียนผลิตภัณฑ์</label><input id="fin-cost-productreg" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
         <div class="cost-option"><input id="fin-cost-rnd-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-rnd-check">ค่าพัฒนาสูตร R&amp;D</label><input id="fin-cost-rnd" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-companyreg-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-companyreg-check">ค่าจดทะเบียนบริษัท</label><input id="fin-cost-companyreg" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-pagefollow-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-pagefollow-check">ค่าติดตามเพจ</label><input id="fin-cost-pagefollow" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-website-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-website-check">ค่าเว็บไซต์</label><input id="fin-cost-website" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-production-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-production-check">ค่าผลิตสินค้า</label><input id="fin-cost-production" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-adpermit-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-adpermit-check">ค่า ฆอ.</label><input id="fin-cost-adpermit" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       </div>
       <div class="field"><label>รวมค่าใช้จ่ายเสริมก่อน VAT</label><input id="fin-extra-subtotal" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
       <div class="field"><label>VAT ค่าใช้จ่ายเสริม (%) <span style="font-weight:600;color:var(--muted)">ยกเว้นค่าแอด</span></label><input id="fin-extra-vat" type="number" min="0" step="0.01" value="7" oninput="updateFinanceTotals()"></div>
@@ -291,6 +296,11 @@ button,input,select,textarea{font-family:var(--font)}
       <div class="payment-row"><label>ค่าจดอย.</label><input id="fin-paid-fda" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       <div class="payment-row"><label>ค่าจดทะเบียนผลิตภัณฑ์</label><input id="fin-paid-productreg" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       <div class="payment-row"><label>ค่าพัฒนาสูตร R&amp;D</label><input id="fin-paid-rnd" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าจดทะเบียนบริษัท</label><input id="fin-paid-companyreg" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าติดตามเพจ</label><input id="fin-paid-pagefollow" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าเว็บไซต์</label><input id="fin-paid-website" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าผลิตสินค้า</label><input id="fin-paid-production" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่า ฆอ.</label><input id="fin-paid-adpermit" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
     </div>
   </div>
   <div class="field"><label>Note</label><textarea id="fin-note" placeholder="เช่น ชำระงวด 1 แล้ว / รอใบเสร็จ / ระยะเวลาสัญญา / เงื่อนไขพิเศษ"></textarea></div>

@@ -131,7 +131,12 @@ const FIN_COST_TYPES=[
   {key:'influencer',label:'ค่าอินฟลู'},
   {key:'fda',label:'ค่าจดอย.'},
   {key:'productreg',label:'ค่าจดทะเบียนผลิตภัณฑ์'},
-  {key:'rnd',label:'ค่าพัฒนาสูตร R&D'}
+  {key:'rnd',label:'ค่าพัฒนาสูตร R&D'},
+  {key:'companyreg',label:'ค่าจดทะเบียนบริษัท'},
+  {key:'pagefollow',label:'ค่าติดตามเพจ'},
+  {key:'website',label:'ค่าเว็บไซต์'},
+  {key:'production',label:'ค่าผลิตสินค้า'},
+  {key:'adpermit',label:'ค่า ฆอ.'}
 ];
 function normalizeExpenseList(input=[],legacy={}){
   let list=Array.isArray(input)?input:[];
@@ -177,7 +182,7 @@ function autoFinanceStatus(current,paid,total,balance){if(current==='overdue'||c
 function bindFinanceAutoCalc(){
   const modal=document.getElementById('finance-modal');
   if(!modal)return;
-  const ids=['fin-package-amount','fin-package-vat','fin-paid-amount','fin-payment-status','fin-cost-ads-check','fin-cost-ads','fin-cost-influencer-check','fin-cost-influencer','fin-cost-fda-check','fin-cost-fda','fin-cost-productreg-check','fin-cost-productreg','fin-cost-rnd-check','fin-cost-rnd','fin-extra-vat','fin-paid-package','fin-paid-ads','fin-paid-influencer','fin-paid-fda','fin-paid-productreg','fin-paid-rnd'];
+  const ids=['fin-package-amount','fin-package-vat','fin-paid-amount','fin-payment-status','fin-extra-vat','fin-paid-package',...FIN_COST_TYPES.flatMap(t=>[`fin-cost-${t.key}-check`,`fin-cost-${t.key}`,`fin-paid-${t.key}`])];
   ids.forEach(id=>{
     const el=document.getElementById(id);
     if(!el||el.dataset.financeAutoCalcBound==='1')return;
