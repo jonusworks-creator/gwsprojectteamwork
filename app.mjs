@@ -2071,3 +2071,109 @@ window.saveBrand=saveBrand;
 
 setTimeout(()=>{try{__segmentRefreshData();}catch(e){console.warn('post item refresh failed',e);}},900);
 /* ================= End emergency final fix ================= */
+
+/* ================= Role-specific people dropdown patch =================
+   Requirement:
+   - Dropdowns for people should show only people in the matching position.
+   - CRM Admin: show only role admin.
+   - CRM Sales: show only Management team (Owner / Manager / Management).
+   - Existing saved value is preserved when editing old records, but new choices stay role-specific.
+   =============================================================== */
+function __gsRoleNameList(roles){
+  const allowed = new Set((Array.isArray(roles)?roles:[roles]).map(normalizeRole));
+  return __safeArr(team)
+    .map(m=>({...m,role:normalizeRole(m.role)}))
+    .filter(m=>allowed.has(m.role) || (allowed.has('owner') && OWNER_EMAILS.map(x=>x.toLowerCase()).includes(String(m.email||'').toLowerCase().trim())))
+    .map(m=>m.name)
+    .filter(Boolean)
+    .filter((name,idx,arr)=>arr.indexOf(name)===idx);
+}
+function __gsManagementNames(){
+  const list = __gsRoleNameList(['owner','manager','management']);
+  return list.length ? list : __safeArr(team).filter(m=>normalizeRole(m.role)==='manager').map(m=>m.name).filter(Boolean);
+}
+function __gsAdminNames(){
+  return __gsRoleNameList(['admin']);
+}
+function __gsOptionHtml(items, placeholder, oldValue){
+  const uniq=[...new Set(__safeArr(items).filter(Boolean))];
+  let html=`<option value="">${esc(placeholder||'-- เลือก --')}</option>`;
+  if(oldValue && !uniq.includes(oldValue)) html += `<option value="${esc(oldValue)}">${esc(oldValue)} (ข้อมูลเดิม)</option>`;
+  return html + uniq.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+}
+crmTeamNames = function(role){
+  if(role==='admin') return __gsAdminNames();
+  if(role==='sales') return __gsManagementNames();
+  return [];
+};
+fillLeadSelect = function(id,items,all){
+  const el=document.getElementById(id);if(!el)return;
+  const old=el.value;
+  el.innerHTML=__gsOptionHtml(items,all,old);
+  el.value=old && [...el.options].some(o=>o.value===old) ? old : '';
+};
+renderCRMFilters = function(){
+  fillLeadSelect('crm-filter-admin',[...new Set(__safeArr(leads).map(l=>l.admin).filter(Boolean).concat(__gsAdminNames()))],'Admin ทั้งหมด');
+  fillLeadSelect('crm-filter-sales',[...new Set(__safeArr(leads).map(l=>l.sales).filter(Boolean).concat(__gsManagementNames()))],'Management ทั้งหมด');
+  fillLeadSelect('crm-filter-source',[...new Set(CRM_SOURCES.concat(__safeArr(leads).map(l=>l.source).filter(Boolean)))],'แหล่งที่มาทั้งหมด');
+};
+populateLeadSelects = function(){
+  fillLeadSelect('lead-admin',__gsAdminNames(),'-- เลือก Admin --');
+  fillLeadSelect('lead-sales',__gsManagementNames(),'-- เลือก Management --');
+};
+const __rolePeoplePatchOpenLeadModal = openLeadModal;
+openLeadModal = function(id=null){
+  __rolePeoplePatchOpenLeadModal(id);
+  const l=id?normalizeLead(__safeArr(leads).find(x=>Number(x.id)===Number(id))||{}):null;
+  const adminEl=document.getElementById('lead-admin');
+  const salesEl=document.getElementById('lead-sales');
+  if(adminEl){
+    const old=l?.admin || (isAdminRole()?currentActorName():'');
+    adminEl.innerHTML=__gsOptionHtml(__gsAdminNames(),'-- เลือก Admin --',old);
+    adminEl.value=old && [...adminEl.options].some(o=>o.value===old) ? old : '';
+  }
+  if(salesEl){
+    const old=l?.sales || '';
+    salesEl.innerHTML=__gsOptionHtml(__gsManagementNames(),'-- เลือก Management --',old);
+    salesEl.value=old && [...salesEl.options].some(o=>o.value===old) ? old : '';
+  }
+};
+window.crmTeamNames=crmTeamNames;
+window.populateLeadSelects=populateLeadSelects;
+window.renderCRMFilters=renderCRMFilters;
+window.openLeadModal=openLeadModal;
+/* ================= End role-specific people dropdown patch ================= */
+
+/* ================= CRM modal action reachability patch =================
+   Problem: on phones/tablets the CRM customer modal form is long, so the
+   Save button can feel too deep. Keep Save/Cancel reachable at the top and
+   bottom, without closing when tapping outside.
+   =============================================================== */
+function __gsEnsureLeadQuickActions(){
+  const modal=document.querySelector('#lead-modal .modal');
+  const head=document.querySelector('#lead-modal .modal-head');
+  if(!modal||!head||document.querySelector('#lead-modal .crm-quick-actions'))return;
+  const bar=document.createElement('div');
+  bar.className='crm-quick-actions';
+  bar.innerHTML=`<button class="btn" type="button"><i class="ti ti-x"></i>ยกเลิก</button><button class="btn primary" type="button"><i class="ti ti-device-floppy"></i>บันทึก</button>`;
+  const cancel=bar.querySelector('.btn:not(.primary)');
+  const save=bar.querySelector('.btn.primary');
+  cancel.onclick=(e)=>{e.preventDefault();e.stopPropagation();closeLeadModal();};
+  save.onclick=(e)=>{e.preventDefault();e.stopPropagation();saveLead();};
+  head.insertAdjacentElement('afterend',bar);
+}
+const __crmReachabilityEnsureCRMUI = ensureCRMUI;
+ensureCRMUI = function(){
+  __crmReachabilityEnsureCRMUI();
+  __gsEnsureLeadQuickActions();
+};
+const __crmReachabilityOpenLeadModal = openLeadModal;
+openLeadModal = function(id=null){
+  __crmReachabilityOpenLeadModal(id);
+  __gsEnsureLeadQuickActions();
+  const body=document.querySelector('#lead-modal .modal-body');
+  if(body)body.scrollTop=0;
+};
+window.ensureCRMUI=ensureCRMUI;
+window.openLeadModal=openLeadModal;
+/* ================= End CRM modal action reachability patch ================= */
