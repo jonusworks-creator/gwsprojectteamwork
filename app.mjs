@@ -2177,3 +2177,128 @@ openLeadModal = function(id=null){
 window.ensureCRMUI=ensureCRMUI;
 window.openLeadModal=openLeadModal;
 /* ================= End CRM modal action reachability patch ================= */
+
+/* ================= Role-specific people dropdowns for task assignment =================
+   - ผู้จ่ายงาน: Owner / Manager / Management only
+   - ผู้รับงาน: filtered by task type/position
+============================================================================= */
+function __taskNormalizeRoleSafe(role){
+  try{return normalizeRole(role);}catch(e){return String(role||'').trim().toLowerCase();}
+}
+function __taskUniqueNames(list){
+  const seen=new Set();
+  return __safeArr(list).map(x=>String(x||'').trim()).filter(x=>{
+    if(!x || seen.has(x)) return false;
+    seen.add(x);
+    return true;
+  });
+}
+function __taskManagementNames(){
+  const ownerEmails=(typeof OWNER_EMAILS!=='undefined'?OWNER_EMAILS:[]).map(x=>String(x||'').toLowerCase().trim());
+  const names=__safeArr(team)
+    .map(m=>({...m,role:__taskNormalizeRoleSafe(m.role),email:String(m.email||'').toLowerCase().trim()}))
+    .filter(m=>['owner','manager','management'].includes(m.role) || ownerEmails.includes(m.email))
+    .map(m=>m.name);
+  return __taskUniqueNames(names.length?names:__safeArr(team).filter(m=>['owner','manager'].includes(__taskNormalizeRoleSafe(m.role))).map(m=>m.name));
+}
+function __taskRolesForType(type){
+  const t=String(type||'').toLowerCase().trim();
+  if(t.includes('content')) return ['content'];
+  if(t.includes('ads') || t.includes('ad')) return ['ads'];
+  if(t.includes('website') || t.includes('web') || t.includes('developer') || t.includes('dev')) return ['developer'];
+  if(t.includes('graphic') || t.includes('video') || t.includes('presentation') || t.includes('branding') || t.includes('logo') || t==='other') return ['graphic'];
+  return ['graphic'];
+}
+function __taskNamesByRoles(roles){
+  const allowed=new Set(__safeArr(roles).map(__taskNormalizeRoleSafe));
+  return __taskUniqueNames(__safeArr(team)
+    .map(m=>({...m,role:__taskNormalizeRoleSafe(m.role)}))
+    .filter(m=>allowed.has(m.role))
+    .map(m=>m.name));
+}
+function __taskOptions(names, emptyLabel='-- เลือก --', legacyValue=''){
+  const original=__taskUniqueNames(names);
+  let list=[...original];
+  const old=String(legacyValue||'').trim();
+  if(old && !list.includes(old)) list=[old,...list];
+  return `<option value="">${esc(emptyLabel)}</option>`+list.map(x=>`<option value="${esc(x)}">${esc(x)}${old===x && !original.includes(x)?' (ข้อมูลเดิม)':''}</option>`).join('');
+}
+function syncTaskAssigneeOptions(legacyValue=''){
+  const typeEl=document.getElementById('f-type');
+  const assigneeEl=document.getElementById('f-assignee');
+  if(!assigneeEl) return;
+  const current=legacyValue || assigneeEl.value || '';
+  const names=__taskNamesByRoles(__taskRolesForType(typeEl?.value||''));
+  assigneeEl.innerHTML=__taskOptions(names,'-- เลือกผู้รับงาน --',current);
+  assigneeEl.value=current && [...assigneeEl.options].some(o=>o.value===current) ? current : '';
+}
+function syncTaskAssignerOptions(legacyValue=''){
+  const assignerEl=document.getElementById('f-assigner');
+  if(!assignerEl) return;
+  const current=legacyValue || assignerEl.value || '';
+  const names=__taskManagementNames();
+  assignerEl.innerHTML=__taskOptions(names,'-- เลือกผู้จ่ายงาน --',current);
+  assignerEl.value=current && [...assignerEl.options].some(o=>o.value===current) ? current : '';
+}
+populateTaskSelects = function(){
+  const brandEl=document.getElementById('f-brand');
+  if(brandEl){
+    const old=brandEl.value;
+    brandEl.innerHTML='<option value="">-- เลือกแบรนด์ --</option>'+brands.map(b=>`<option value="${esc(brandName(b))}">${esc(brandName(b))}</option>`).join('');
+    if(old) brandEl.value=old;
+  }
+  const typeEl=document.getElementById('f-type');
+  if(typeEl){
+    const old=typeEl.value || 'Graphic Design';
+    typeEl.innerHTML=TASK_TYPES.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    typeEl.value=old;
+    typeEl.onchange=()=>syncTaskAssigneeOptions('');
+  }
+  syncTaskAssignerOptions('');
+  syncTaskAssigneeOptions('');
+  renderFilters();
+};
+openTaskModal = function(){
+  if(!canManageAll()){toast('เฉพาะ Owner / Manager เท่านั้นที่เพิ่มงานใหม่ได้');return;}
+  editingTaskId=null;
+  tempFiles={brief:[],deliver:[]};
+  document.getElementById('task-modal-title').textContent='จ่ายงานใหม่';
+  populateTaskSelects();
+  ['f-name','f-note','brief-link-name','brief-link-url','deliver-link-name','deliver-link-url'].forEach(id=>{const el=document.getElementById(id); if(el)el.value='';});
+  document.getElementById('f-startdate').value=today();
+  document.getElementById('f-deadline').value='';
+  document.getElementById('f-priority').value='normal';
+  document.getElementById('f-status').value='todo';
+  document.getElementById('f-review').value='-';
+  renderFileList('brief');
+  renderFileList('deliver');
+  document.getElementById('task-modal').classList.add('open');
+};
+editTask = function(id){
+  if(!canManageAll()){toast('ตำแหน่งนี้แก้ไขรายละเอียดงานไม่ได้ ทำได้เฉพาะเปลี่ยนสถานะและเพิ่มคอมเมนต์');return;}
+  const t=tasks.find(x=>Number(x.id)===Number(id));
+  if(!t)return;
+  openTaskModal();
+  editingTaskId=t.id;
+  tempFiles={brief:normLinks(t.brief),deliver:normLinks(t.deliver)};
+  document.getElementById('task-modal-title').textContent='แก้ไขงาน';
+  document.getElementById('f-name').value=t.name||'';
+  document.getElementById('f-brand').value=t.brand||'';
+  document.getElementById('f-type').value=t.type||'Other';
+  syncTaskAssignerOptions(t.assigner?.name||'');
+  syncTaskAssigneeOptions(t.assignee?.name||'');
+  document.getElementById('f-startdate').value=t.startDate||'';
+  document.getElementById('f-deadline').value=t.deadline||'';
+  document.getElementById('f-priority').value=t.priority||'normal';
+  document.getElementById('f-status').value=t.status||'todo';
+  document.getElementById('f-review').value=t.review||'-';
+  document.getElementById('f-note').value=t.note||'';
+  renderFileList('brief');
+  renderFileList('deliver');
+};
+window.populateTaskSelects=populateTaskSelects;
+window.openTaskModal=openTaskModal;
+window.editTask=editTask;
+window.syncTaskAssigneeOptions=syncTaskAssigneeOptions;
+window.syncTaskAssignerOptions=syncTaskAssignerOptions;
+/* ================= End role-specific people dropdowns for task assignment ================= */
