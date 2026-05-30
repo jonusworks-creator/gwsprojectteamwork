@@ -140,7 +140,8 @@ const FIN_COST_TYPES=[
   {key:'production',label:'ค่าผลิตสินค้า'},
   {key:'adpermit',label:'ค่า ฆอ.'},
   {key:'linepremium',label:'ค่าสมัคร ID LINE Premium'},
-  {key:'sampleproduct',label:'ค่าตัวอย่างสินค้า'}
+  {key:'sampleproduct',label:'ค่าตัวอย่างสินค้า'},
+  {key:'nutritiontable',label:'ค่าตรวจตารางโภชนาการ'}
 ];
 function normalizeExpenseList(input=[],legacy={}){
   let list=Array.isArray(input)?input:[];
