@@ -375,6 +375,7 @@ button,input,select,textarea{font-family:var(--font)}
         <div class="cost-option"><input id="fin-cost-adpermit-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-adpermit-check">ค่า ฆอ.</label><input id="fin-cost-adpermit" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
         <div class="cost-option"><input id="fin-cost-linepremium-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-linepremium-check">ค่าสมัคร ID LINE Premium</label><input id="fin-cost-linepremium" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
         <div class="cost-option"><input id="fin-cost-sampleproduct-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-sampleproduct-check">ค่าตัวอย่างสินค้า</label><input id="fin-cost-sampleproduct" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+        <div class="cost-option"><input id="fin-cost-nutritiontable-check" type="checkbox" onchange="updateFinanceTotals()"><label for="fin-cost-nutritiontable-check">ค่าตรวจตารางโภชนาการ</label><input id="fin-cost-nutritiontable" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       </div>
       <div class="field"><label>รวมค่าใช้จ่ายเสริมก่อน VAT</label><input id="fin-extra-subtotal" type="number" min="0" step="0.01" readonly placeholder="คำนวณอัตโนมัติ"></div>
       <div class="field"><label>VAT ค่าใช้จ่ายเสริม (%) <span style="font-weight:600;color:var(--muted)">ยกเว้นค่าแอด</span></label><input id="fin-extra-vat" type="number" min="0" step="0.01" value="7" oninput="updateFinanceTotals()"></div>
@@ -405,6 +406,7 @@ button,input,select,textarea{font-family:var(--font)}
       <div class="payment-row"><label>ค่า ฆอ.</label><input id="fin-paid-adpermit" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       <div class="payment-row"><label>ค่าสมัคร ID LINE Premium</label><input id="fin-paid-linepremium" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
       <div class="payment-row"><label>ค่าตัวอย่างสินค้า</label><input id="fin-paid-sampleproduct" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
+      <div class="payment-row"><label>ค่าตรวจตารางโภชนาการ</label><input id="fin-paid-nutritiontable" type="number" min="0" step="0.01" placeholder="0.00" oninput="updateFinanceTotals()"></div>
     </div>
   </div>
   <div class="field"><label>Note</label><textarea id="fin-note" placeholder="เช่น ชำระงวด 1 แล้ว / รอใบเสร็จ / ระยะเวลาสัญญา / เงื่อนไขพิเศษ"></textarea></div>
