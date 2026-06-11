@@ -2079,7 +2079,7 @@ setTimeout(()=>{try{__segmentRefreshData();}catch(e){console.warn('post item ref
    Requirement:
    - Dropdowns for people should show only people in the matching position.
    - CRM Admin: show only role admin.
-   - CRM Sales: show only Management team (Owner / Manager / Management).
+   - CRM Sales: show Sales role plus Management team (Owner / Manager / Management / Sales).
    - Existing saved value is preserved when editing old records, but new choices stay role-specific.
    =============================================================== */
 function __gsRoleNameList(roles){
@@ -2095,6 +2095,10 @@ function __gsManagementNames(){
   const list = __gsRoleNameList(['owner','manager','management']);
   return list.length ? list : __safeArr(team).filter(m=>normalizeRole(m.role)==='manager').map(m=>m.name).filter(Boolean);
 }
+function __gsSalesContactNames(){
+  const list = __gsRoleNameList(['owner','manager','management','sales']);
+  return list.length ? list : __gsManagementNames();
+}
 function __gsAdminNames(){
   return __gsRoleNameList(['admin']);
 }
@@ -2106,7 +2110,7 @@ function __gsOptionHtml(items, placeholder, oldValue){
 }
 crmTeamNames = function(role){
   if(role==='admin') return __gsAdminNames();
-  if(role==='sales') return __gsManagementNames();
+  if(role==='sales') return __gsSalesContactNames();
   return [];
 };
 fillLeadSelect = function(id,items,all){
@@ -2117,12 +2121,12 @@ fillLeadSelect = function(id,items,all){
 };
 renderCRMFilters = function(){
   fillLeadSelect('crm-filter-admin',[...new Set(__safeArr(leads).map(l=>l.admin).filter(Boolean).concat(__gsAdminNames()))],'Admin ทั้งหมด');
-  fillLeadSelect('crm-filter-sales',[...new Set(__safeArr(leads).map(l=>l.sales).filter(Boolean).concat(__gsManagementNames()))],'Management ทั้งหมด');
+  fillLeadSelect('crm-filter-sales',[...new Set(__safeArr(leads).map(l=>l.sales).filter(Boolean).concat(__gsSalesContactNames()))],'Sales / Management ทั้งหมด');
   fillLeadSelect('crm-filter-source',[...new Set(CRM_SOURCES.concat(__safeArr(leads).map(l=>l.source).filter(Boolean)))],'แหล่งที่มาทั้งหมด');
 };
 populateLeadSelects = function(){
   fillLeadSelect('lead-admin',__gsAdminNames(),'-- เลือก Admin --');
-  fillLeadSelect('lead-sales',__gsManagementNames(),'-- เลือก Management --');
+  fillLeadSelect('lead-sales',__gsSalesContactNames(),'-- เลือก Sales / Management --');
 };
 const __rolePeoplePatchOpenLeadModal = openLeadModal;
 openLeadModal = function(id=null){
@@ -2137,7 +2141,7 @@ openLeadModal = function(id=null){
   }
   if(salesEl){
     const old=l?.sales || '';
-    salesEl.innerHTML=__gsOptionHtml(__gsManagementNames(),'-- เลือก Management --',old);
+    salesEl.innerHTML=__gsOptionHtml(__gsSalesContactNames(),'-- เลือก Sales / Management --',old);
     salesEl.value=old && [...salesEl.options].some(o=>o.value===old) ? old : '';
   }
 };
